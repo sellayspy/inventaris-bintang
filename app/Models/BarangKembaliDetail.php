@@ -10,7 +10,7 @@ class BarangKembaliDetail extends Model
 
     protected $table = 'barang_kembali_detail';
 
-    protected $fillable = ['barang_kembali_id', 'barang_id', 'kondisi'];
+    protected $fillable = ['barang_kembali_id', 'barang_id', 'kondisi', 'status_saat_kembali', 'kondisi_awal_saat_kembali'];
 
     public function barangKembali()
     {

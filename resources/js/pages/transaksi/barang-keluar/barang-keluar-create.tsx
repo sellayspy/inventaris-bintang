@@ -6,9 +6,9 @@ export default function BarangKeluarCreate() {
     const { kategoriList, lokasiList, merekList, modelList, serialNumberList } = usePage().props as unknown as {
         kategoriList: Array<{ id: number; nama: string }>;
         lokasiList: Array<{ id: number; nama: string }>;
-        merekList: string[];
-        modelList: string[];
-        serialNumberList: string[];
+        merekList: Array<{ id: number; nama: string }>;
+        modelList: Array<{ id: number; nama: string }>;
+        serialNumberList: Record<string, string[]>;
     };
 
     const kategoriOptions = kategoriList.map((item) => item.nama);
@@ -22,7 +22,6 @@ export default function BarangKeluarCreate() {
         kategori: string;
         merek: string;
         model: string;
-        name: string;
         lokasi: string;
         serial_numbers: string[];
         status_keluar: Record<string, string>; // ✅ fix here
@@ -31,11 +30,15 @@ export default function BarangKeluarCreate() {
         kategori: '',
         merek: '',
         model: '',
-        name: '',
         lokasi: '',
         serial_numbers: [''],
         status_keluar: {},
     });
+
+    const selectedKey = `${data.merek}|${data.model}`;
+    const availableSerials = serialNumberList[selectedKey] || [];
+
+    const filteredSerialSuggestions = availableSerials.filter((sn) => !serialNumbers.includes(sn));
 
     const handleSerialChange = (value: string, index: number) => {
         if (isDuplicateSerial(value, index)) {
@@ -102,6 +105,20 @@ export default function BarangKeluarCreate() {
         return serialNumbers.some((sn, i) => sn === value && i !== index);
     };
 
+    // Ambil kategori_id dari nama kategori yang dipilih
+    const selectedKategori = kategoriList.find((k) => k.nama === data.kategori);
+    const selectedKategoriId = selectedKategori?.id;
+
+    // Filter merek berdasarkan kategori
+    const filteredMerekList = merekList.filter((merek) => merek.model_barang.some((model: any) => model.jenis?.kategori_id === selectedKategoriId));
+
+    // Ambil merek_id dari nama merek yang dipilih
+    const selectedMerek = merekList.find((m) => m.nama === data.merek);
+    const selectedMerekId = selectedMerek?.id;
+
+    // Filter model berdasarkan kategori dan merek
+    const filteredModelList = modelList.filter((model) => model.merek_id === selectedMerekId && model.jenis?.kategori_id === selectedKategoriId);
+
     return (
         <AppLayout>
             <div className="rounded-lg bg-white p-6 shadow-md">
@@ -136,6 +153,7 @@ export default function BarangKeluarCreate() {
                         {errors.kategori && <p className="text-sm text-red-500">{errors.kategori}</p>}
                     </div>
 
+                    {/* Merek */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Merek</label>
                         <input
@@ -146,13 +164,14 @@ export default function BarangKeluarCreate() {
                             onChange={(e) => setData('merek', e.target.value)}
                         />
                         <datalist id="merek-suggest">
-                            {merekList.map((merek, index) => (
-                                <option key={index} value={merek} />
+                            {filteredMerekList.map((merek) => (
+                                <option key={merek.id} value={merek.nama} />
                             ))}
                         </datalist>
                         {errors.merek && <p className="text-sm text-red-500">{errors.merek}</p>}
                     </div>
 
+                    {/* Model */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Model</label>
                         <input
@@ -163,22 +182,11 @@ export default function BarangKeluarCreate() {
                             onChange={(e) => setData('model', e.target.value)}
                         />
                         <datalist id="model-suggest">
-                            {modelList.map((model, index) => (
-                                <option key={index} value={model} />
+                            {filteredModelList.map((model) => (
+                                <option key={model.id} value={model.nama} />
                             ))}
                         </datalist>
                         {errors.model && <p className="text-sm text-red-500">{errors.model}</p>}
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Nama Barang</label>
-                        <input
-                            type="text"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.name}
-                            onChange={(e) => setData('name', e.target.value)}
-                        />
-                        {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
                     </div>
 
                     <div>
@@ -212,8 +220,18 @@ export default function BarangKeluarCreate() {
                                         value={serial}
                                         onChange={(e) => handleSerialChange(e.target.value, index)}
                                         placeholder={`Serial #${index + 1}`}
-                                        list="serialNumberSuggestions" // 👈 ini
+                                        list={`serialNumberSuggestions-${index}`}
                                     />
+                                    {(!data.merek || !data.model) && (
+                                        <p className="text-xs text-yellow-600 italic">
+                                            Pilih merek dan model terlebih dahulu untuk menampilkan serial number.
+                                        </p>
+                                    )}
+                                    <datalist id={`serialNumberSuggestions-${index}`}>
+                                        {filteredSerialSuggestions.map((sn) => (
+                                            <option key={sn} value={sn} />
+                                        ))}
+                                    </datalist>
                                     {serialNumbers.length > 1 && (
                                         <button
                                             type="button"
@@ -244,15 +262,6 @@ export default function BarangKeluarCreate() {
 
                         {errors.serial_numbers && <p className="text-sm text-red-500">{errors.serial_numbers}</p>}
                     </div>
-
-                    {/* 🔧 Tambahkan datalist ini di bawah input */}
-                    <datalist id="serialNumberSuggestions">
-                        {serialNumberList
-                            .filter((sn) => !serialNumbers.includes(sn)) // HANYA yang belum dipilih
-                            .map((sn, i) => (
-                                <option key={i} value={sn} />
-                            ))}
-                    </datalist>
 
                     <div className="pt-4 md:col-span-2">
                         <button

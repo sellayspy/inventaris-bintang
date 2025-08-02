@@ -2,25 +2,23 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class JenisBarang extends Model
 {
+    use HasFactory;
     protected $table = 'jenis_barang';
-    protected $fillable = ['kategori_id', 'merek', 'model'];
+    protected $fillable = ['nama', 'kategori_id'];
 
     public function kategori()
     {
         return $this->belongsTo(KategoriBarang::class, 'kategori_id');
     }
 
-    public function barang()
+    public function modelBarang()
     {
-        return $this->hasMany(Barang::class, 'jenis_barang_id');
+        return $this->hasMany(ModelBarang::class, 'jenis_id');
     }
 
-    public function rekapStok()
-    {
-        return $this->hasMany(RekapStokBarang::class, 'jenis_barang_id');
-    }
 }

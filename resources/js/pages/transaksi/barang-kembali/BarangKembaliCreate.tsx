@@ -11,17 +11,23 @@ export default function BarangKembaliCreate() {
     const { kategoriList, lokasiList, merekList, modelList, serialNumberList } = usePage().props as unknown as {
         kategoriList: Array<{ id: number; nama: string }>;
         lokasiList: Lokasi[];
-        merekList: string[];
-        modelList: string[];
+        merekList: Array<{ id: number; nama: string }>;
+        modelList: Array<{ id: number; nama: string }>;
         serialNumberList: string[];
     };
 
     const [serialNumbers, setSerialNumbers] = useState<string[]>(['']);
     const [availableSerials, setAvailableSerials] = useState<string[]>([]);
+    const [kategoriOptions, setKategoriOptions] = useState<{ id: number; nama: string }[]>([]);
+    const [merekOptions, setMerekOptions] = useState<{ id: number; nama: string }[]>([]);
+    const [modelOptions, setModelOptions] = useState<{ id: number; nama: string }[]>([]);
 
     const { data, setData, post, processing, errors } = useForm({
         tanggal: '',
         lokasi: '',
+        kategori: '',
+        merek: '',
+        model: '',
         serial_numbers: [''],
         kondisi_map: {} as Record<string, string>,
     });
@@ -96,11 +102,72 @@ export default function BarangKembaliCreate() {
         }
     }, [data.lokasi]);
 
+    useEffect(() => {
+        if (data.lokasi) {
+            const lokasi = lokasiList.find((l) => l.nama === data.lokasi);
+            if (lokasi) {
+                fetch(`/api/kategori-by-lokasi/${lokasi.id}`)
+                    .then((res) => res.json())
+                    .then(setKategoriOptions)
+                    .catch((err) => console.error('Gagal fetch kategori:', err));
+            } else {
+                setKategoriOptions([]);
+            }
+            setData('kategori', '');
+            setData('merek', '');
+            setData('model', '');
+            setAvailableSerials([]);
+        }
+    }, [data.lokasi]);
+
+    useEffect(() => {
+        if (data.lokasi && data.kategori) {
+            const lokasi = lokasiList.find((l) => l.nama === data.lokasi);
+            if (lokasi) {
+                fetch(`/api/merek-by-kategori/${lokasi.id}/${encodeURIComponent(data.kategori)}`)
+                    .then((res) => res.json())
+                    .then(setMerekOptions)
+                    .catch((err) => console.error('Gagal fetch merek:', err));
+            }
+        }
+        setData('merek', '');
+        setData('model', '');
+        setAvailableSerials([]);
+    }, [data.kategori]);
+
+    useEffect(() => {
+        if (data.lokasi && data.merek) {
+            const lokasi = lokasiList.find((l) => l.nama === data.lokasi);
+            if (lokasi) {
+                fetch(`/api/model-by-merek/${lokasi.id}/${encodeURIComponent(data.merek)}`)
+                    .then((res) => res.json())
+                    .then(setModelOptions)
+                    .catch((err) => console.error('Gagal fetch model:', err));
+            }
+
+            setData('model', '');
+            setAvailableSerials([]);
+        }
+    }, [data.merek]);
+
+    useEffect(() => {
+        if (data.lokasi && data.model) {
+            const lokasi = lokasiList.find((l) => l.nama === data.lokasi);
+            if (lokasi) {
+                fetch(`/api/serial-by-model/${lokasi.id}/${encodeURIComponent(data.model)}`)
+                    .then((res) => res.json())
+                    .then(setAvailableSerials)
+                    .catch((err) => console.error('Gagal fetch serial number:', err));
+            }
+        }
+    }, [data.model]);
+
     return (
         <AppLayout>
             <div className="rounded bg-white p-6 shadow">
                 <h2 className="mb-4 text-2xl font-semibold">Form Barang Kembali</h2>
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {/* Kolom kiri-kanan */}
                     <div>
                         <label className="block font-semibold">Tanggal</label>
                         <input
@@ -129,6 +196,55 @@ export default function BarangKembaliCreate() {
                     </div>
 
                     <div>
+                        <label className="block font-semibold">Kategori Barang</label>
+                        <input
+                            list="kategoriOptions"
+                            className="w-full rounded border px-3 py-2"
+                            value={data.kategori}
+                            onChange={(e) => setData('kategori', e.target.value)}
+                        />
+                        <datalist id="kategoriOptions">
+                            {kategoriOptions.map((kategori) => (
+                                <option key={kategori.id} value={kategori.nama} />
+                            ))}
+                        </datalist>
+                        {errors.kategori && <p className="text-sm text-red-500">{errors.kategori}</p>}
+                    </div>
+
+                    <div>
+                        <label className="block font-semibold">Merek Barang</label>
+                        <input
+                            list="merekOptions"
+                            className="w-full rounded border px-3 py-2"
+                            value={data.merek}
+                            onChange={(e) => setData('merek', e.target.value)}
+                        />
+                        <datalist id="merekOptions">
+                            {merekOptions.map((merek) => (
+                                <option key={merek.id} value={merek.nama} />
+                            ))}
+                        </datalist>
+                        {errors.merek && <p className="text-sm text-red-500">{errors.merek}</p>}
+                    </div>
+
+                    <div>
+                        <label className="block font-semibold">Model Barang</label>
+                        <input
+                            list="modelOptions"
+                            className="w-full rounded border px-3 py-2"
+                            value={data.model}
+                            onChange={(e) => setData('model', e.target.value)}
+                        />
+                        <datalist id="modelOptions">
+                            {modelOptions.map((model) => (
+                                <option key={model.id} value={model.nama} />
+                            ))}
+                        </datalist>
+                        {errors.model && <p className="text-sm text-red-500">{errors.model}</p>}
+                    </div>
+
+                    {/* Serial number dan tambahannya pakai full width */}
+                    <div className="col-span-1 md:col-span-2">
                         <label className="block font-semibold">Serial Number</label>
                         {serialNumbers.map((serial, index) => (
                             <div key={index} className="mb-2 flex items-center gap-2">
@@ -161,7 +277,7 @@ export default function BarangKembaliCreate() {
                         ))}
                         <datalist id="serialNumberList">
                             {availableSerials
-                                .filter((sn) => !serialNumbers.includes(sn)) // hanya tampilkan yang belum dipilih
+                                .filter((sn) => !serialNumbers.includes(sn))
                                 .map((sn) => (
                                     <option key={sn} value={sn} />
                                 ))}
@@ -172,9 +288,11 @@ export default function BarangKembaliCreate() {
                         {errors.serial_numbers && <p className="text-sm text-red-500">{errors.serial_numbers}</p>}
                     </div>
 
-                    <button type="submit" disabled={processing} className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-                        Simpan
-                    </button>
+                    <div className="col-span-1 md:col-span-2">
+                        <button type="submit" disabled={processing} className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+                            Simpan
+                        </button>
+                    </div>
                 </form>
             </div>
         </AppLayout>

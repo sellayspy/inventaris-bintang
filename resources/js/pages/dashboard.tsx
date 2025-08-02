@@ -1,5 +1,8 @@
+import StokPerLokasiChart from '@/components/chart/stok-perlokasi-chart';
+import StokSummaryChart from '@/components/chart/stok-summary-chart';
 import AktivitasTerbaruCard from '@/components/dashboard/aktivitas-terbaru-card';
-import KategoriJenisRingkasanCard from '@/components/dashboard/kategori-jenis-ringkasan-card';
+import FastSearch from '@/components/dashboard/fast-search';
+import StokKondisiRingkasanCard from '@/components/dashboard/stok-kondisi-ringkasan-card';
 import StokKritisCard from '@/components/dashboard/stok-kritis-card';
 import StokPerLokasiCard from '@/components/dashboard/stok-perlokasi-card';
 import TotalStokCard from '@/components/dashboard/total-stok-card';
@@ -33,8 +36,10 @@ export default function Dashboard() {
             perbaikan: number;
             total?: number;
         }[];
-        totalKategori: number;
-        totalJenisBarang: number;
+        stokBaruSecondGudang: {
+            baru: number;
+            second: number;
+        };
     };
 
     const {
@@ -44,13 +49,15 @@ export default function Dashboard() {
         latestKeluar = [],
         latestKembali = [],
         stokPerLokasi = [],
-        totalKategori,
-        totalJenisBarang,
+        stokBaruSecondGudang,
     } = usePage().props as unknown as DashboardProps;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard" />
+            <div className="p-4">
+                <FastSearch />
+            </div>
             <div className="flex flex-col gap-6 p-4">
                 {/* Kartu Atas */}
                 <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
@@ -61,7 +68,21 @@ export default function Dashboard() {
                         total={stokSummary?.total}
                     />
                     <StokKritisCard data={stokKritis} />
-                    <KategoriJenisRingkasanCard totalKategori={totalKategori} totalJenisBarang={totalJenisBarang} />
+                    <StokKondisiRingkasanCard stokBaru={stokBaruSecondGudang.baru} stokSecond={stokBaruSecondGudang.second} />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {/* Ringkasan PieChart */}
+                    <div className="rounded-xl border border-gray-300 bg-white p-4 shadow-md dark:border-gray-700 dark:bg-gray-800">
+                        <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-gray-100">Ringkasan Stok</h2>
+                        <StokSummaryChart data={stokSummary} />
+                    </div>
+
+                    {/* Stok per Lokasi BarChart */}
+                    <div className="rounded-xl border border-gray-300 bg-white p-4 shadow-md dark:border-gray-700 dark:bg-gray-800">
+                        <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-gray-100">Stok per Lokasi</h2>
+                        <StokPerLokasiChart data={stokPerLokasi} />
+                    </div>
                 </div>
 
                 {/* Aktivitas Terbaru */}

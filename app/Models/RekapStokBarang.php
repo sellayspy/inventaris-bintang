@@ -8,7 +8,7 @@ class RekapStokBarang extends Model
 {
     protected $table = 'rekap_stok_barang';
     protected $fillable = [
-        'jenis_barang_id',
+        'model_id',
         'lokasi_id',
         'jumlah_total',
         'jumlah_tersedia',
@@ -17,13 +17,14 @@ class RekapStokBarang extends Model
         'jumlah_terdistribusi'
     ];
 
-    public function jenisBarang()
-    {
-        return $this->belongsTo(JenisBarang::class, 'jenis_barang_id');
-    }
 
     public function lokasi()
     {
         return $this->belongsTo(Lokasi::class, 'lokasi_id');
+    }
+
+    public function modelBarang()
+    {
+        return $this->belongsTo(ModelBarang::class, 'model_id');
     }
 }

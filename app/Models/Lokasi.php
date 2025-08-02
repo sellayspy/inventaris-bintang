@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Lokasi extends Model
 {
     protected $table = 'lokasi';
-    protected $fillable = ['nama', 'alamat'];
+    protected $fillable = ['nama', 'alamat', 'is_gudang'];
 
     public function stok()
     {

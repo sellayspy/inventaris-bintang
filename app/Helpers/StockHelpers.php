@@ -8,30 +8,28 @@ use Illuminate\Support\Facades\DB;
 class StockHelpers
 {
     /**
-     * Tambah stok (biasanya saat barang masuk baru ke sistem)
+     * Tambah stok baru ke sistem (barang masuk awal).
      */
-    public static function barangMasuk(int $jenisBarangId, int $lokasiId, int $jumlah = 1): void
+    public static function barangMasuk(int $modelId, int $lokasiId, int $jumlah = 1): void
     {
         $rekap = RekapStokBarang::firstOrCreate([
-            'jenis_barang_id' => $jenisBarangId,
+            'model_id' => $modelId,
             'lokasi_id' => $lokasiId,
         ]);
 
         $rekap->jumlah_total += $jumlah;
         $rekap->jumlah_tersedia += $jumlah;
-
         $rekap->save();
     }
 
-
     /**
-     * Terima barang di lokasi tujuan (hasil distribusi)
-     * TIDAK mengubah jumlah_total karena barang hanya pindah
+     * Terima barang hasil distribusi (lokasi tujuan).
+     * Tidak mengubah total karena hanya pindah lokasi.
      */
-    public static function distribusiMasuk(int $jenisBarangId, int $lokasiTujuanId, int $jumlah = 1): void
+    public static function distribusiMasuk(int $modelId, int $lokasiTujuanId, int $jumlah = 1): void
     {
         $rekap = RekapStokBarang::firstOrCreate([
-            'jenis_barang_id' => $jenisBarangId,
+            'model_id' => $modelId,
             'lokasi_id' => $lokasiTujuanId,
         ]);
 
@@ -40,75 +38,70 @@ class StockHelpers
     }
 
     /**
-     * Pemusnahan atau kehilangan barang (pengurangan permanen dari stok total)
+     * Mengurangi stok total dan tersedia, contoh untuk musnah, hilang, rusak parah, dll.
      */
-    public static function musnahkanStok(int $jenisBarangId, int $lokasiId, int $jumlah = 1): void
+    public static function musnahkanStok(int $modelId, int $lokasiId, int $jumlah = 1): void
     {
-        $rekap = RekapStokBarang::where('jenis_barang_id', $jenisBarangId)
+        $rekap = RekapStokBarang::where('model_id', $modelId)
             ->where('lokasi_id', $lokasiId)
             ->first();
 
         if ($rekap) {
-            $rekap->jumlah_total -= $jumlah;
-            $rekap->jumlah_tersedia -= $jumlah;
+            $rekap->jumlah_total = max(0, $rekap->jumlah_total - $jumlah);
+            $rekap->jumlah_tersedia = max(0, $rekap->jumlah_tersedia - $jumlah);
             $rekap->save();
         }
     }
 
     /**
-     * Barang kembali dari lokasi (dengan kondisi tertentu)
+     * Barang kembali ke gudang, dari lokasi distribusi (bagus, rusak, atau diperbaiki).
      */
-    public static function kembalikanStok(int $jenisBarangId, int $lokasiId, string $kondisi = 'bagus'): void
+    public static function kembalikanStok(int $modelId, int $lokasiId, string $kondisi = 'bagus'): void
     {
         $rekap = RekapStokBarang::firstOrCreate([
-            'jenis_barang_id' => $jenisBarangId,
+            'model_id' => $modelId,
             'lokasi_id' => $lokasiId,
         ]);
 
-        if ($kondisi === 'bagus') {
-            $rekap->jumlah_tersedia += 1;
-        } elseif ($kondisi === 'rusak') {
-            $rekap->jumlah_rusak += 1;
-        } elseif ($kondisi === 'diperbaiki') {
-            $rekap->jumlah_perbaikan += 1;
+        switch ($kondisi) {
+            case 'bagus':
+                $rekap->jumlah_tersedia += 1;
+                break;
+            case 'rusak':
+                $rekap->jumlah_rusak += 1;
+                break;
+            case 'diperbaiki':
+                $rekap->jumlah_perbaikan += 1;
+                break;
+            default:
+                $rekap->jumlah_tersedia += 1;
+                break;
         }
 
         $rekap->save();
     }
 
-
-    public static function kurangiStokDistribusi(int $jenisBarangId, int $lokasiId, int $jumlah = 1): void
+    /**
+     * Mengurangi jumlah tersedia saat barang didistribusikan.
+     */
+    public static function kurangiStokDistribusi(int $modelId, int $lokasiId, int $jumlah = 1): void
     {
-        $rekap = RekapStokBarang::where('jenis_barang_id', $jenisBarangId)
+        $rekap = RekapStokBarang::where('model_id', $modelId)
             ->where('lokasi_id', $lokasiId)
             ->first();
 
         if ($rekap) {
-            $rekap->jumlah_tersedia -= $jumlah;
-            if ($rekap->jumlah_tersedia < 0) {
-                $rekap->jumlah_tersedia = 0; // jaga-jaga
-            }
+            $rekap->jumlah_tersedia = max(0, $rekap->jumlah_tersedia - $jumlah);
             $rekap->save();
         }
     }
 
     /**
-     * Proses distribusi antar dua lokasi: kurangi dari asal, tambah ke tujuan
+     * Proses distribusi: kurangi dari asal, tambah ke tujuan.
      */
-    public static function pindahkanStok(int $jenisBarangId, int $lokasiAsalId, int $lokasiTujuanId, int $jumlah = 1): void
+    public static function pindahkanStok(int $modelId, int $lokasiAsalId, int $lokasiTujuanId, int $jumlah = 1): void
     {
-        // Kurangi stok dari lokasi asal
-        $rekapAsal = RekapStokBarang::where('jenis_barang_id', $jenisBarangId)
-            ->where('lokasi_id', $lokasiAsalId)
-            ->first();
-
-        if ($rekapAsal) {
-            $rekapAsal->jumlah_tersedia -= $jumlah;
-            $rekapAsal->save();
-        }
-
-        // Tambah stok ke lokasi tujuan
-        self::distribusiMasuk($jenisBarangId, $lokasiTujuanId, $jumlah);
+        self::kurangiStokDistribusi($modelId, $lokasiAsalId, $jumlah);
+        self::distribusiMasuk($modelId, $lokasiTujuanId, $jumlah);
     }
-
 }

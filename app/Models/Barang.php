@@ -2,47 +2,43 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Barang extends Model
 {
+    use HasFactory;
     protected $table = 'barang';
-    protected $fillable = ['jenis_barang_id','name', 'asal_id', 'serial_number', 'status', 'kondisi_awal'];
+    protected $fillable = [
+        'jenis_barang_id', 'asal_id', 'lokasi_id', 'model_id',
+        'serial_number', 'kondisi_awal', 'status'
+    ];
 
     public function jenisBarang()
     {
         return $this->belongsTo(JenisBarang::class);
     }
 
+
     public function asal()
     {
         return $this->belongsTo(AsalBarang::class, 'asal_id');
     }
 
-    public function statusHistories()
+    public function lokasi()
     {
-        return $this->hasMany(RiwayatStatusBarang::class);
+        return $this->belongsTo(Lokasi::class, 'lokasi_id');
     }
 
-    public function mutasi()
+    public function modelBarang()
     {
-        return $this->hasMany(MutasiBarang::class);
+        return $this->belongsTo(ModelBarang::class, 'model_id');
     }
 
-    // Transaksi
-    public function barangMasukDetails()
+    public function rak()
     {
-        return $this->hasMany(BarangMasukDetail::class);
+        return $this->belongsTo(RakBarang::class, 'rak_id');
     }
 
-    public function barangKeluarDetails()
-    {
-        return $this->hasMany(BarangKeluarDetail::class);
-    }
-
-    public function barangKembaliDetails()
-    {
-        return $this->hasMany(BarangKembaliDetail::class);
-    }
 
 }

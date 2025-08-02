@@ -11,7 +11,7 @@ class StockController extends Controller
 {
     public function index()
     {
-        $rekap = RekapStokBarang::with(['jenisBarang.kategori', 'lokasi'])->get();
+        $rekap = RekapStokBarang::with(['modelBarang.kategori', 'lokasi'])->get();
 
         $summary = [
             'gudang' => $rekap->filter(fn($i) => $i->lokasi?->is_gudang)->sum('jumlah_tersedia'),

@@ -18,7 +18,8 @@ interface BarangKeluar {
     model: string;
     merek: string;
     kategori: string;
-    lokasi: string;
+    lokasi_tujuan: string;
+    status_keluar: string;
 }
 
 interface PageProps {
@@ -32,6 +33,7 @@ interface PageProps {
     };
     kategoriOptions: KategoriOption[];
     lokasiOptions: LokasiOption[];
+    [key: string]: unknown;
 }
 
 export default function BarangKeluarIndex() {
@@ -122,6 +124,7 @@ export default function BarangKeluarIndex() {
                                 <th className="border p-2">Model</th>
                                 <th className="border p-2">Kategori</th>
                                 <th className="border p-2">Tujuan Distribusi</th>
+                                <th className="border p-2">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -139,7 +142,8 @@ export default function BarangKeluarIndex() {
                                         <td className="border p-2">{item.merek || '-'}</td>
                                         <td className="border p-2">{item.model || '-'}</td>
                                         <td className="border p-2">{item.kategori || '-'}</td>
-                                        <td className="border p-2">{item.lokasi || '-'}</td>
+                                        <td className="border p-2">{item.lokasi_tujuan || '-'}</td>
+                                        <td className="border p-2">{item.status_keluar || '-'}</td>
                                     </tr>
                                 ))
                             )}

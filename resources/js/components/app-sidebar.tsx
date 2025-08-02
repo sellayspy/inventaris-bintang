@@ -13,7 +13,22 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { Link } from '@inertiajs/react';
-import { BookOpen, Building2, Database, FileText, Folder, LayoutGrid, List, MapPin, Package, Settings } from 'lucide-react';
+import {
+    Archive,
+    BookOpen,
+    Boxes,
+    Building2,
+    Database,
+    FileText,
+    Folder,
+    Layers,
+    LayoutGrid,
+    MapPin,
+    Package,
+    Settings,
+    Shapes,
+    Tags,
+} from 'lucide-react';
 import AppLogo from './app-logo';
 
 export function AppSidebar() {
@@ -30,10 +45,13 @@ export function AppSidebar() {
             title: 'Master Data',
             icon: Database,
             children: [
-                { title: 'Kategori', href: '/kategori', icon: List },
-                { title: 'Jenis Barang', href: '/jenis-barang', icon: Package },
+                { title: 'Kategori', href: '/kategori', icon: Layers },
+                { title: 'Merek', href: '/merek', icon: Tags },
+                { title: 'Model Barang', href: '/model', icon: Boxes },
+                { title: 'Jenis Barang', href: '/jenis-barang', icon: Shapes },
                 { title: 'Asal Barang', href: '/asal-barang', icon: Building2 },
                 { title: 'Lokasi', href: '/lokasi', icon: MapPin },
+                { title: 'Rak Barang', href: '/rak-barang', icon: Archive },
             ],
         },
     ];

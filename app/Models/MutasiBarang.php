@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class MutasiBarang extends Model
 {
+    protected $table = 'mutasi_barang';
+
     protected $fillable = ['barang_id', 'lokasi_asal_id', 'lokasi_tujuan_id', 'tanggal', 'keterangan'];
 
     public function barang()
