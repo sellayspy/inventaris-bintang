@@ -1,14 +1,18 @@
 import AppLayout from '@/layouts/app-layout';
-import { useForm, usePage } from '@inertiajs/react';
-import React, { useState } from 'react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import React, { useEffect, useState } from 'react';
 
 export default function BarangKeluarCreate() {
-    const { kategoriList, lokasiList, merekList, modelList, serialNumberList } = usePage().props as unknown as {
+    const { kategoriList, lokasiList, merekList, modelList, serialNumberList, flash } = usePage().props as unknown as {
         kategoriList: Array<{ id: number; nama: string }>;
         lokasiList: Array<{ id: number; nama: string }>;
         merekList: Array<{ id: number; nama: string }>;
         modelList: Array<{ id: number; nama: string }>;
         serialNumberList: Record<string, string[]>;
+        flash?: {
+            barang_keluar_id?: number;
+            [key: string]: any;
+        };
     };
 
     const kategoriOptions = kategoriList.map((item) => item.nama);
@@ -16,6 +20,9 @@ export default function BarangKeluarCreate() {
 
     const [serialNumbers, setSerialNumbers] = useState<string[]>(['']);
     const [statusKeluarList, setStatusKeluarList] = useState<string[]>(['dipinjamkan']);
+
+    const [showModal, setShowModal] = useState(false);
+    const [barangKeluarId, setBarangKeluarId] = useState<number | null>(null);
 
     const { data, setData, post, processing, errors } = useForm<{
         tanggal: string;
@@ -98,8 +105,30 @@ export default function BarangKeluarCreate() {
             return;
         }
 
-        post('/barang-keluar');
+        post('/barang-keluar', {
+            onSuccess: () => {
+                setData({
+                    tanggal: '',
+                    kategori: '',
+                    merek: '',
+                    model: '',
+                    lokasi: '',
+                    serial_numbers: [''],
+                    status_keluar: {},
+                });
+                setSerialNumbers(['']);
+                setStatusKeluarList(['dipinjamkan']);
+            },
+        });
     };
+
+    useEffect(() => {
+        console.log('FLASH:', flash);
+        if (flash?.barang_keluar_id) {
+            setBarangKeluarId(flash.barang_keluar_id);
+            setShowModal(true);
+        }
+    }, [flash]);
 
     const isDuplicateSerial = (value: string, index: number) => {
         return serialNumbers.some((sn, i) => sn === value && i !== index);
@@ -263,7 +292,7 @@ export default function BarangKeluarCreate() {
                         {errors.serial_numbers && <p className="text-sm text-red-500">{errors.serial_numbers}</p>}
                     </div>
 
-                    <div className="pt-4 md:col-span-2">
+                    <div className="flex gap-4 pt-4 md:col-span-2">
                         <button
                             type="submit"
                             disabled={processing}
@@ -271,8 +300,49 @@ export default function BarangKeluarCreate() {
                         >
                             Simpan Barang Keluar
                         </button>
+
+                        <button
+                            type="button"
+                            onClick={() => router.get('/barang-keluar')}
+                            className="rounded bg-gray-400 px-6 py-2 text-white hover:bg-gray-500"
+                        >
+                            Kembali
+                        </button>
                     </div>
                 </form>
+                {showModal && barangKeluarId && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center">
+                        <div className="w-[90%] max-w-sm rounded-lg bg-white p-6 text-center shadow-lg">
+                            <h2 className="mb-4 text-lg font-semibold text-gray-700">Barang berhasil disimpan</h2>
+                            <p className="mb-6 text-sm text-gray-600">Apakah Anda ingin mencetak label sekarang?</p>
+                            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                                <button
+                                    onClick={() => window.open(route('barang-keluar.cetak-label', barangKeluarId), '_blank')}
+                                    className="w-full rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 sm:w-auto"
+                                >
+                                    Cetak Label
+                                </button>
+
+                                <button
+                                    onClick={() => window.open(route('barang-keluar.cetak-surat', barangKeluarId), '_blank')}
+                                    className="w-full rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 sm:w-auto"
+                                >
+                                    Cetak Surat
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setShowModal(false);
+                                        router.get('/barang-keluar');
+                                    }}
+                                    className="w-full rounded bg-gray-400 px-4 py-2 text-white hover:bg-gray-500 sm:w-auto"
+                                >
+                                    Tutup
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </AppLayout>
     );

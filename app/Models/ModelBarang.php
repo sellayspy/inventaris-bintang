@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Traits\HasCaseInsensitiveSearch;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class ModelBarang extends Model
 {
+     use HasCaseInsensitiveSearch;
+
     use HasFactory;
     protected $table = 'model_barang';
-    protected $fillable = ['kategori_id', 'merek_id', 'nama', 'jenis_id', 'deskripsi'];
+    protected $fillable = ['kategori_id', 'merek_id', 'nama', 'jenis_id', 'deskripsi', 'label'];
 
     public function kategori()
     {
@@ -26,5 +29,9 @@ class ModelBarang extends Model
         return $this->belongsTo(JenisBarang::class, 'jenis_id');
     }
 
+    public function barang()
+    {
+        return $this->hasMany(Barang::class, 'model_id');
+    }
 
 }

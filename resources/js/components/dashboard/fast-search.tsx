@@ -27,6 +27,7 @@ interface BarangDetail {
     asal: string;
     kondisi: string;
     status: string;
+    lokasi: string;
     rak: RakInfo;
     jumlah_tersedia: number;
 }
@@ -42,7 +43,7 @@ export default function FastSearch() {
 
     useEffect(() => {
         const delayDebounce = setTimeout(() => {
-            if (query.length >= 2) {
+            if (query.length >= 1) {
                 setIsLoading(true);
                 fetch(`/dashboard/fast-search?q=${encodeURIComponent(query)}`)
                     .then((res) => res.json())
@@ -83,33 +84,48 @@ export default function FastSearch() {
     };
 
     return (
-        <div className="relative mx-auto w-full max-w-md">
+        <div className="mx-auto w-full max-w-md space-y-1">
+            {/* Search Input */}
             <div className="relative">
                 <input
                     type="text"
-                    className="focus:ring-opacity-50 w-full rounded-lg border border-gray-300 p-3 pr-10 text-sm shadow-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    className="w-full rounded-xl border-0 bg-gray-50 p-4 pr-12 text-sm shadow-sm ring-1 ring-gray-200 transition-all duration-200 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
                     placeholder="Cari barang berdasarkan serial, merek, atau model..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setTimeout(() => setIsFocused(false), 150)}
                 />
-                {isLoading && (
-                    <div className="absolute top-3 right-3">
+                {isLoading ? (
+                    <div className="absolute top-1/2 right-3 -translate-y-1/2">
                         <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
                     </div>
+                ) : (
+                    <svg
+                        className="absolute top-1/2 right-3 h-5 w-5 -translate-y-1/2 text-gray-400"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
                 )}
             </div>
 
+            {/* Suggestions Dropdown */}
             {isFocused && (suggestions.length > 0 || isLoading) && (
-                <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg transition-all duration-200">
+                <ul className="absolute z-10 mt-1 max-h-80 w-full max-w-md overflow-auto rounded-xl bg-white p-2 shadow-lg ring-1 ring-gray-200 animate-in fade-in slide-in-from-top-1">
                     {isLoading && suggestions.length === 0 ? (
-                        <li className="p-3 text-center text-sm text-gray-500">Mencari...</li>
+                        <li className="flex items-center justify-center p-3">
+                            <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
+                            <span className="text-sm text-gray-600">Mencari...</span>
+                        </li>
                     ) : suggestions.length > 0 ? (
                         suggestions.map((item) => (
                             <li
                                 key={item.id}
-                                className="cursor-pointer border-b border-gray-100 p-3 text-sm transition-colors duration-150 last:border-b-0 hover:bg-blue-50"
+                                className="cursor-pointer rounded-lg p-3 text-sm transition-colors duration-150 hover:bg-blue-50 active:bg-blue-100"
                                 onMouseDown={() => handleSelect(item.id)}
                             >
                                 <div className="font-medium text-gray-900">{item.serial_number}</div>
@@ -118,63 +134,86 @@ export default function FastSearch() {
                                 </div>
                             </li>
                         ))
-                    ) : query.length >= 2 ? (
-                        <li className="p-3 text-center text-sm text-gray-500">Tidak ditemukan</li>
-                    ) : null}
+                    ) : query.length >= 1 ? (
+                        <li className="p-3 text-center text-sm text-gray-500">Tidak ditemukan - coba kata kunci lain</li>
+                    ) : (
+                        <li className="p-3 text-center text-sm text-gray-500">Ketik untuk mencari barang</li>
+                    )}
                 </ul>
             )}
 
+            {/* Modal */}
             <Modal show={showModal} onClose={() => setShowModal(false)}>
-                {loadingDetail ? (
-                    <div className="flex min-h-[200px] items-center justify-center">
-                        <div className="flex flex-col items-center">
+                <div className="p-6">
+                    {loadingDetail ? (
+                        <div className="flex min-h-[200px] flex-col items-center justify-center">
                             <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
                             <p className="mt-3 text-gray-600">Memuat data...</p>
                         </div>
-                    </div>
-                ) : selectedBarang ? (
-                    <div className="space-y-4">
-                        <h2 className="text-xl font-bold text-gray-800">Informasi Barang</h2>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Nama Barang</h3>
-                                <p className="text-gray-900">{selectedBarang.nama_barang}</p>
+                    ) : selectedBarang ? (
+                        <div className="space-y-6">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-gray-900">{selectedBarang.nama_barang}</h2>
+                                    <p className="text-blue-600">{selectedBarang.serial_number}</p>
+                                </div>
+                                <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
+                                    {selectedBarang.status}
+                                </span>
                             </div>
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Serial Number</h3>
-                                <p className="text-gray-900">{selectedBarang.serial_number}</p>
+
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div className="rounded-lg bg-gray-50 p-4">
+                                    <h3 className="text-xs font-semibold tracking-wider text-gray-500 uppercase">Spesifikasi</h3>
+                                    <div className="mt-2 space-y-3">
+                                        <div>
+                                            <p className="text-sm text-gray-500">Merek</p>
+                                            <p className="font-medium">{selectedBarang.merek}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Model</p>
+                                            <p className="font-medium">{selectedBarang.model}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Kondisi</p>
+                                            <p className="font-medium">{selectedBarang.kondisi}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-lg bg-gray-50 p-4">
+                                    <h3 className="text-xs font-semibold tracking-wider text-gray-500 uppercase">Lokasi</h3>
+                                    <div className="mt-2 space-y-3">
+                                        <div>
+                                            <p className="text-sm text-gray-500">Rak</p>
+                                            <p className="font-medium">
+                                                {selectedBarang.rak.nama_rak} ({selectedBarang.rak.kode_rak})
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Baris</p>
+                                            <p className="font-medium">{selectedBarang.rak.baris}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Lokasi</p>
+                                            <p className="font-medium">{selectedBarang.lokasi}</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Merek</h3>
-                                <p className="text-gray-900">{selectedBarang.merek}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Model</h3>
-                                <p className="text-gray-900">{selectedBarang.model}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Asal</h3>
-                                <p className="text-gray-900">{selectedBarang.asal}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Kondisi</h3>
-                                <p className="text-gray-900">{selectedBarang.kondisi}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Status</h3>
-                                <p className="text-gray-900">{selectedBarang.status}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-medium text-gray-500">Lokasi Rak</h3>
-                                <p className="text-gray-900">
-                                    {selectedBarang.rak.nama_rak} ({selectedBarang.rak.kode_rak}) - Baris {selectedBarang.rak.baris}
-                                </p>
+
+                            <div className="rounded-lg bg-gray-50 p-4">
+                                <h3 className="text-xs font-semibold tracking-wider text-gray-500 uppercase">Informasi Tambahan</h3>
+                                <div className="mt-2 grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-sm text-gray-500">Asal</p>
+                                        <p className="font-medium">{selectedBarang.asal}</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="flex min-h-[200px] items-center justify-center">
-                        <div className="text-center">
+                    ) : (
+                        <div className="flex min-h-[200px] flex-col items-center justify-center text-center">
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 className="mx-auto h-12 w-12 text-gray-400"
@@ -185,14 +224,15 @@ export default function FastSearch() {
                                 <path
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    strokeWidth={2}
+                                    strokeWidth={1.5}
                                     d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                 />
                             </svg>
-                            <p className="mt-2 text-gray-600">Data tidak ditemukan</p>
+                            <h3 className="mt-2 text-lg font-medium text-gray-900">Data tidak ditemukan</h3>
+                            <p className="mt-1 text-gray-500">Barang dengan detail tersebut tidak dapat ditemukan</p>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </Modal>
         </div>
     );

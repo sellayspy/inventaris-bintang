@@ -12,6 +12,7 @@ class RekapStokBarang extends Model
         'lokasi_id',
         'jumlah_total',
         'jumlah_tersedia',
+        'jumlah_terjual',
         'jumlah_rusak',
         'jumlah_perbaikan',
         'jumlah_terdistribusi'

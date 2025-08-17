@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\HasCaseInsensitiveSearch;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Barang extends Model
 {
+     use HasCaseInsensitiveSearch;
+
     use HasFactory;
     protected $table = 'barang';
     protected $fillable = [
@@ -40,5 +43,9 @@ class Barang extends Model
         return $this->belongsTo(RakBarang::class, 'rak_id');
     }
 
+    public function pemusnahan()
+    {
+        return $this->belongsToMany(Pemusnahan::class, 'barang_pemusnahan');
+    }
 
 }

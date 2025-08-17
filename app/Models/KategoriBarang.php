@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\HasCaseInsensitiveSearch;
 use Illuminate\Database\Eloquent\Model;
 
 class KategoriBarang extends Model
 {
+    use HasCaseInsensitiveSearch;
+
     protected $table = 'kategori_barang';
     protected $fillable = ['nama'];
 

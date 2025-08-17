@@ -2,7 +2,6 @@ import { Head, useForm } from '@inertiajs/react';
 import { LoaderCircle } from 'lucide-react';
 import { FormEventHandler } from 'react';
 
-import InputError from '@/components/input-error';
 import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,13 +35,15 @@ export default function Login({ status, canResetPassword }: LoginProps) {
     };
 
     return (
-        <AuthLayout title="Log in to your account" description="Enter your email and password below to log in">
-            <Head title="Log in" />
+        <AuthLayout title="Selamat Datang" description="Silahkan login terlebih dahulu">
+            <Head title="Login" />
 
-            <form className="flex flex-col gap-6" onSubmit={submit}>
-                <div className="grid gap-6">
-                    <div className="grid gap-2">
-                        <Label htmlFor="name">Username</Label>
+            <form className="mt-8 space-y-4" onSubmit={submit}>
+                <div className="space-y-4">
+                    <div>
+                        <Label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Masukan Nama
+                        </Label>
                         <Input
                             id="name"
                             type="text"
@@ -52,16 +53,23 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                             autoComplete="name"
                             value={data.name}
                             onChange={(e) => setData('name', e.target.value)}
-                            placeholder="admin"
+                            placeholder="Masukan nama"
+                            className="focus:border-primary-500 focus:ring-primary-500 mt-1 block w-full rounded-lg border-gray-300 shadow-sm dark:border-gray-600 dark:bg-gray-700/50"
                         />
                     </div>
 
-                    <div className="grid gap-2">
-                        <div className="flex items-center">
-                            <Label htmlFor="password">Password</Label>
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Masukan Password
+                            </Label>
                             {canResetPassword && (
-                                <TextLink href={route('password.request')} className="ml-auto text-sm" tabIndex={5}>
-                                    Forgot password?
+                                <TextLink
+                                    href={route('password.request')}
+                                    className="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 text-sm"
+                                    tabIndex={3}
+                                >
+                                    Lupa password?
                                 </TextLink>
                             )}
                         </div>
@@ -73,37 +81,42 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                             autoComplete="current-password"
                             value={data.password}
                             onChange={(e) => setData('password', e.target.value)}
-                            placeholder="Password"
+                            placeholder="Masukan password anda"
+                            className="focus:border-primary-500 focus:ring-primary-500 mt-1 block w-full rounded-lg border-gray-300 shadow-sm dark:border-gray-600 dark:bg-gray-700/50"
                         />
-                        <InputError message={errors.password} />
                     </div>
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center">
                         <Checkbox
                             id="remember"
                             name="remember"
                             checked={data.remember}
                             onClick={() => setData('remember', !data.remember)}
                             tabIndex={3}
+                            className="text-primary-600 focus:ring-primary-500 h-4 w-4 rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700/50"
                         />
-                        <Label htmlFor="remember">Remember me</Label>
+                        <Label htmlFor="remember" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                            Ingat saya
+                        </Label>
                     </div>
 
-                    <Button type="submit" className="mt-4 w-full" tabIndex={4} disabled={processing}>
-                        {processing && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                        Log in
+                    <Button
+                        type="submit"
+                        className="hover:bg-primary-700 focus:ring-primary-500 dark:bg-primary-500 dark:hover:bg-primary-600 flex w-full justify-center rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm focus:ring-2 focus:ring-offset-2 focus:outline-none"
+                        tabIndex={4}
+                        disabled={processing}
+                    >
+                        {processing ? (
+                            <span className="flex items-center">
+                                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                                Memproses...
+                            </span>
+                        ) : (
+                            'Masuk'
+                        )}
                     </Button>
                 </div>
-
-                <div className="text-center text-sm text-muted-foreground">
-                    Don't have an account?{' '}
-                    <TextLink href={route('register')} tabIndex={5}>
-                        Sign up
-                    </TextLink>
-                </div>
             </form>
-
-            {status && <div className="mb-4 text-center text-sm font-medium text-green-600">{status}</div>}
         </AuthLayout>
     );
 }

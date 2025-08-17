@@ -22,5 +22,15 @@ class BarangMasuk extends Model
     {
         return $this->hasMany(BarangMasukDetail::class);
     }
+
+    public function isGudang(): bool
+    {
+        return $this->is_gudang === true;
+    }
+
+    public function user() {
+        return $this->belongsTo(User::class);
+    }
+
 }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\MasterData;
 
+use App\Enums\PermissionEnum;
 use App\Http\Controllers\Controller;
 use App\Models\KategoriBarang;
 use Illuminate\Http\Request;
@@ -10,12 +11,29 @@ use Inertia\Inertia;
 
 class KategoriBarangController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:' . PermissionEnum::VIEW_KATEGORI->value)->only(['index', 'show', 'search']);
+        $this->middleware('can:' . PermissionEnum::CREATE_KATEGORI->value)->only(['create', 'store']);
+        $this->middleware('can:' . PermissionEnum::EDIT_KATEGORI->value)->only(['edit', 'update']);
+        $this->middleware('can:' . PermissionEnum::DELETE_KATEGORI->value)->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
-        $kategori = KategoriBarang::latest()->paginate(10);
+        $kategori = KategoriBarang::applyCaseInsensitiveSearch(
+                $request,
+                ['nama']
+        )
+        ->latest()
+        ->paginate(10)
+        ->withQueryString();
 
         return Inertia::render('master/kategori/index', [
             'kategori' => $kategori,
+            'filters'   => [
+                'search'    => $request->input('search'),
+            ],
             'flash' => [
                 'message' => session('message'),
             ]

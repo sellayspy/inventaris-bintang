@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\MasterData;
 
+use App\Enums\PermissionEnum;
 use App\Http\Controllers\Controller;
 use App\Models\JenisBarang;
 use App\Models\KategoriBarang;
@@ -12,14 +13,29 @@ use Inertia\Inertia;
 
 class JenisBarangController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:' . PermissionEnum::VIEW_JENIS->value)->only(['index', 'show', 'search']);
+        $this->middleware('can:' . PermissionEnum::CREATE_JENIS->value)->only(['create', 'store']);
+        $this->middleware('can:' . PermissionEnum::EDIT_JENIS->value)->only(['edit', 'update']);
+        $this->middleware('can:' . PermissionEnum::DELETE_JENIS->value)->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
-        $jenis = JenisBarang::with('kategori')->latest()->paginate(10);
+        $jenis = JenisBarang::with('kategori')
+            ->applyCaseInsensitiveSearch($request, ['nama', 'kategori.nama'])
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
         $kategori = KategoriBarang::select('id', 'nama')->get();
 
         return Inertia::render('master/jenis-barang/index', [
             'jenisBarang' => $jenis,
             'kategoriBarang' => $kategori,
+            'filters' => [
+                'search' => $request->input('search'),
+            ],
             'flash' => [
                 'message' => session('message'),
             ]

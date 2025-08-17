@@ -15,17 +15,20 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-
     public function fastSearchSuggestions(Request $request)
     {
-        $keyword = $request->input('q');
+        $keyword = strtolower($request->input('q'));
+
+        if (!$keyword) {
+            return response()->json(['data' => []]);
+        }
 
         $results = Barang::with(['rak.lokasi', 'modelBarang.merek'])
             ->where(function ($query) use ($keyword) {
-                $query->where('serial_number', 'LIKE', "%{$keyword}%")
+                $query->whereRaw('LOWER(serial_number) LIKE ?', ["%{$keyword}%"])
                     ->orWhereHas('modelBarang', function ($q) use ($keyword) {
-                        $q->where('nama', 'LIKE', "%{$keyword}%")
-                            ->orWhereHas('merek', fn($m) => $m->where('nama', 'LIKE', "%{$keyword}%"));
+                        $q->whereRaw('LOWER(nama) LIKE ?', ["%{$keyword}%"])
+                            ->orWhereHas('merek', fn($m) => $m->whereRaw('LOWER(nama) LIKE ?', ["%{$keyword}%"]));
                     });
             })
             ->whereHas('rak.lokasi', fn($q) => $q->where('is_gudang', true))
@@ -67,6 +70,7 @@ class DashboardController extends Controller
             'asal' => optional($barang->asal)->nama ?? '-',
             'kondisi' => $barang->kondisi_awal ?? '-',
             'status' => $barang->status ?? '-',
+            'lokasi' => $barang->rak->lokasi->nama ?? '-',
             'rak' => [
                 'nama_rak' => optional($barang->rak)->nama_rak ?? '-',
                 'kode_rak' => optional($barang->rak)->kode_rak ?? '-',
@@ -82,14 +86,14 @@ class DashboardController extends Controller
         $stokSummary = RekapStokBarang::selectRaw('
                 SUM(jumlah_tersedia) as tersedia,
                 SUM(jumlah_rusak) as rusak,
-                SUM(jumlah_perbaikan) as perbaikan
+                SUM(jumlah_perbaikan) as perbaikan,
+                SUM(jumlah_terjual) as terjual
             ')
             ->join('lokasi', 'rekap_stok_barang.lokasi_id', '=', 'lokasi.id')
             ->where('lokasi.is_gudang', true)
             ->first();
             // Hitung jumlah total di PHP
         $stokSummary->total = $stokSummary->tersedia + $stokSummary->rusak + $stokSummary->perbaikan;
-
 
         // Stok per lokasi
         $stokPerLokasi = RekapStokBarang::select('lokasi_id')

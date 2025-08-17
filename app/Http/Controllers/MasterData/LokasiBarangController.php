@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\MasterData;
 
+use App\Enums\PermissionEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Lokasi;
 use Illuminate\Http\Request;
@@ -10,12 +11,28 @@ use Inertia\Inertia;
 
 class LokasiBarangController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:' . PermissionEnum::VIEW_LOKASI_DISTRIBUSI->value)->only(['index', 'show', 'search']);
+        $this->middleware('can:' . PermissionEnum::CREATE_LOKASI_DISTRIBUSI->value)->only(['create', 'store']);
+        $this->middleware('can:' . PermissionEnum::EDIT_LOKASI_DISTRIBUSI->value)->only(['edit', 'update']);
+        $this->middleware('can:' . PermissionEnum::DELETE_LOKASI_DISTRIBUSI->value)->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
-        $lokasi = Lokasi::latest()->paginate(10);
-
+        $lokasi = Lokasi::applyCaseInsensitiveSearch(
+                $request,
+                ['nama']
+        )
+        ->latest()
+        ->paginate(10)
+        ->withQueryString();
         return Inertia::render('master/lokasi/index', [
             'lokasi' => $lokasi,
+            'filters' => [
+                'search' => $request->input('search'),
+            ],
             'flash' => [
                 'message' => session('message'),
             ]

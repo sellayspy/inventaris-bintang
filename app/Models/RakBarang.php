@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\HasCaseInsensitiveSearch;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class RakBarang extends Model
 {
+    use HasCaseInsensitiveSearch;
+
     use HasFactory;
 
     protected $table = 'rak_barang';

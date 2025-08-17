@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\MasterData;
 
+use App\Enums\PermissionEnum;
 use App\Http\Controllers\Controller;
 use App\Models\MerekBarang;
 use Illuminate\Http\Request;
@@ -10,16 +11,40 @@ use Inertia\Inertia;
 
 class MerekBarangController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:' . PermissionEnum::VIEW_MEREK->value)->only(['index', 'show', 'search']);
+        $this->middleware('can:' . PermissionEnum::CREATE_MEREK->value)->only(['create', 'store']);
+        $this->middleware('can:' . PermissionEnum::EDIT_MEREK->value)->only(['edit', 'update']);
+        $this->middleware('can:' . PermissionEnum::DELETE_MEREK->value)->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
-        $merek = MerekBarang::latest()->paginate(10);
+        $merek = MerekBarang::query()
+            ->applyCaseInsensitiveSearch($request, ['nama'])
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
 
         return Inertia::render('master/merek/index', [
             'merek' => $merek,
+            'filters' => [
+                'search' => $request->input('search'),
+            ],
             'flash' => [
                 'message' => session('message'),
             ]
         ]);
+    }
+
+    public function search(Request $request)
+    {
+        $merek = MerekBarang::applyCaseInsensitiveSearch($request, ['nama'])
+            ->latest()
+            ->paginate(10);
+
+        return response()->json($merek);
     }
 
     public function store(Request $request)

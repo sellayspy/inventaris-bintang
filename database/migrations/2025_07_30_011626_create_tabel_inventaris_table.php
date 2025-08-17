@@ -72,6 +72,7 @@ return new class extends Migration {
             $table->integer('jumlah_rusak')->default(0);
             $table->integer('jumlah_perbaikan')->default(0);
             $table->integer('jumlah_terdistribusi')->default(0);
+            $table->integer('jumlah_terjual')->default(0);
             $table->timestamps();
         });
 

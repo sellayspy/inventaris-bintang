@@ -1,5 +1,6 @@
+import { PERMISSIONS } from '@/constants/permission';
 import AppLayout from '@/layouts/app-layout';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowRight, PackagePlus, Truck, Undo2 } from 'lucide-react';
 
 const cards = [
@@ -9,6 +10,7 @@ const cards = [
         href: '/barang-masuk',
         color: 'bg-green-600',
         icon: <PackagePlus className="h-10 w-10 text-white opacity-90" />,
+        permission: PERMISSIONS.VIEW_BARANG_MASUK,
     },
     {
         title: 'Barang Keluar',
@@ -16,6 +18,7 @@ const cards = [
         href: '/barang-keluar',
         color: 'bg-blue-600',
         icon: <Truck className="h-10 w-10 text-white opacity-90" />,
+        permission: PERMISSIONS.VIEW_BARANG_KELUAR,
     },
     {
         title: 'Barang Kembali',
@@ -23,10 +26,14 @@ const cards = [
         href: '/barang-kembali',
         color: 'bg-yellow-500',
         icon: <Undo2 className="h-10 w-10 text-white opacity-90" />,
+        permission: PERMISSIONS.VIEW_BARANG_KEMBALI,
     },
 ];
 
 export default function TransaksiIndex() {
+    const { auth } = usePage().props;
+    const userPermissions = auth.permissions || [];
+    const visibleCards = cards.filter((card) => !card.permission || userPermissions.includes(card.permission));
     return (
         <AppLayout>
             <Head title="Transaksi" />
@@ -35,7 +42,7 @@ export default function TransaksiIndex() {
                 <h1 className="mb-6 text-2xl font-bold text-gray-800 dark:text-white">Transaksi</h1>
 
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                    {cards.map((card) => (
+                    {visibleCards.map((card) => (
                         <Link
                             key={card.href}
                             href={card.href}
