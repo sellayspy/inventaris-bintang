@@ -1,6 +1,7 @@
 import AppLayout from '@/layouts/app-layout';
 import { useForm, usePage } from '@inertiajs/react';
 import React, { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
 
 interface Lokasi {
     id: number;
@@ -22,7 +23,7 @@ export default function BarangKembaliCreate() {
     const [merekOptions, setMerekOptions] = useState<{ id: number; nama: string }[]>([]);
     const [modelOptions, setModelOptions] = useState<{ id: number; nama: string }[]>([]);
 
-    const { data, setData, post, processing, errors } = useForm({
+    const { data, setData, post, processing, errors, reset } = useForm({
         tanggal: '',
         lokasi: '',
         kategori: '',
@@ -72,16 +73,45 @@ export default function BarangKembaliCreate() {
 
         const isDuplicate = new Set(serialNumbers).size !== serialNumbers.length;
         if (isDuplicate) {
-            alert('Terdapat serial number yang sama. Harap periksa kembali.');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Duplikat Serial Number',
+                text: 'Terdapat serial number yang sama. Harap periksa kembali.',
+            });
             return;
         }
 
         post('/barang-kembali', {
             onSuccess: () => {
-                console.log('Redirected successfully');
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil',
+                    text: 'Barang berhasil dikembalikan!',
+                    timer: 2000,
+                    showConfirmButton: false,
+                });
+
+                reset();
+                setSerialNumbers(['']);
+                setAvailableSerials([]);
+                setKategoriOptions([]);
+                setMerekOptions([]);
+                setModelOptions([]);
             },
             onError: (errors) => {
-                console.log('Validation errors:', errors);
+                if (errors.serial_numbers) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: errors.serial_numbers[0],
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Gagal',
+                        text: 'Terjadi kesalahan saat menyimpan data.',
+                    });
+                }
             },
         });
     };

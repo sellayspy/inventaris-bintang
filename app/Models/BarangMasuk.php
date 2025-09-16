@@ -11,7 +11,7 @@ class BarangMasuk extends Model
 
     protected $table = 'barang_masuk';
 
-    protected $fillable = ['tanggal', 'asal_barang_id'];
+    protected $fillable = ['tanggal', 'asal_barang_id', 'user_id'];
 
     public function asal()
     {

@@ -97,16 +97,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::resource('barang-masuk', BarangMasukController::class);
     Route::get('/ajax/model-barang', [BarangMasukController::class, 'getModelByKategoriMerek']);
-    Route::get('/ajax/jenis-barang', [BarangMasukController::class, 'getJenisByKategori']);
+    // Route::get('/ajax/jenis-barang', [BarangMasukController::class, 'getJenisByKategori']);
+    Route::get('/ajax/jenis-barang', [BarangMasukController::class, 'getJenisBarang']);
     Route::post('/api/cek-serial', function (Request $request) {
-    return Barang::whereIn('serial_number', $request->serial_numbers)->pluck('serial_number');
+        return Barang::whereIn('serial_number', $request->serial_numbers)->pluck('serial_number');
     });
 
     Route::resource('barang-keluar', BarangKeluarController::class);
     Route::get('/barang-keluar/{id}/cetak-label', [BarangKeluarController::class, 'cetakLabel'])
-    ->name('barang-keluar.cetak-label');
+        ->name('barang-keluar.cetak-label');
     Route::get('/barang-keluar/{barangKeluar}/cetak-label/{detailId}', [BarangKeluarController::class, 'cetakLabelItem'])
-    ->name('barang-keluar.cetak-label.item');
+        ->name('barang-keluar.cetak-label.item');
     Route::get('/barang-keluar/{id}/cetak-surat', [BarangKeluarController::class, 'cetakSurat'])
         ->name('barang-keluar.cetak-surat');
 
@@ -130,11 +131,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/stok-terjual', [StockTerjualController::class, 'index'])->name('stok.terjual.index');
 
     Route::prefix('stock-rusak')->name('stock.rusak.')->group(function () {
-    Route::get('/', [StockRusakController::class, 'index'])->name('index');
-    Route::get('/detail', [StockRusakController::class, 'show'])->name('show');
-    Route::post('/pindah-ke-perbaikan', [StockRusakController::class, 'perbaiki'])->name('perbaiki');
+        Route::get('/', [StockRusakController::class, 'index'])->name('index');
+        Route::get('/detail', [StockRusakController::class, 'show'])->name('show');
+        Route::post('/pindah-ke-perbaikan', [StockRusakController::class, 'perbaiki'])->name('perbaiki');
 
-    Route::prefix('pemusnahan')->name('pemusnahan.')->group(function () {
+        Route::prefix('pemusnahan')->name('pemusnahan.')->group(function () {
             // Halaman daftar pengajuan pemusnahan
             Route::get('/', [StockRusakController::class, 'indexPemusnahan'])->name('index');
 
@@ -155,28 +156,27 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::resource('total-stock', TotalStockController::class)->only(['index', 'destroy']);
     Route::get('/total-stock/export-pdf', [TotalStockController::class, 'exportPdf'])->name('total-stock.exportPdf');
+});
 
-    });
+Route::prefix('laporan')->name('laporan.')->group(function () {
+    Route::get('/', [LaporanSummaryController::class, 'index'])->name('index');
 
-    Route::prefix('laporan')->name('laporan.')->group(function () {
-        Route::get('/', [LaporanSummaryController::class, 'index'])->name('index');
+    Route::get('/masuk', [LaporanBarangMasukController::class, 'index'])->name('masuk');
+    Route::get('/masuk/excel', [LaporanBarangMasukController::class, 'exportBarangMasukExcel'])->name('masuk.export');
+    Route::get('/masuk/pdf', [LaporanBarangMasukController::class, 'exportBarangMasukPdf'])->name('masuk.pdf');
 
-        Route::get('/masuk', [LaporanBarangMasukController::class, 'index'])->name('masuk');
-        Route::get('/masuk/excel', [LaporanBarangMasukController::class, 'exportBarangMasukExcel'])->name('masuk.export');
-        Route::get('/masuk/pdf', [LaporanBarangMasukController::class, 'exportBarangMasukPdf'])->name('masuk.pdf');
+    Route::get('/keluar', [LaporanBarangKeluarController::class, 'index'])->name('keluar');
+    Route::get('/keluar/excel', [LaporanBarangKeluarController::class, 'exportBarangKeluarExcel'])->name('keluar.export');
+    Route::get('/keluar/pdf', [LaporanBarangKeluarController::class, 'exportBarangKeluarPdf'])->name('keluar.pdf');
 
-        Route::get('/keluar', [LaporanBarangKeluarController::class, 'index'])->name('keluar');
-        Route::get('/keluar/excel', [LaporanBarangKeluarController::class, 'exportBarangKeluarExcel'])->name('keluar.export');
-        Route::get('/keluar/pdf', [LaporanBarangKeluarController::class, 'exportBarangKeluarPdf'])->name('keluar.pdf');
+    Route::get('/kembali', [LaporanBarangKembaliController::class, 'index'])->name('kembali');
+    Route::get('/kembali/excel', [LaporanBarangKembaliController::class, 'exportBarangKembaliExcel'])->name('kembali.export');
+    Route::get('/kembali/pdf', [LaporanBarangKembaliController::class, 'exportBarangKembaliPdf'])->name('kembali.pdf');
 
-        Route::get('/kembali', [LaporanBarangKembaliController::class, 'index'])->name('kembali');
-        Route::get('/kembali/excel', [LaporanBarangKembaliController::class, 'exportBarangKembaliExcel'])->name('kembali.export');
-        Route::get('/kembali/pdf', [LaporanBarangKembaliController::class, 'exportBarangKembaliPdf'])->name('kembali.pdf');
+    Route::get('/mutasi', [MutasiBarangController::class, 'index'])->name('mutasi');
+    Route::get('/mutasi/export', [MutasiBarangController::class, 'exportMutasi'])->name('mutasi.export');
+    Route::get('/mutasi/pdf', [MutasiBarangController::class, 'exportMutasiPdf'])->name('mutasi.pdf');
+});
 
-        Route::get('/mutasi', [MutasiBarangController::class, 'index'])->name('mutasi');
-        Route::get('/mutasi/export', [MutasiBarangController::class, 'exportMutasi'])->name('mutasi.export');
-        Route::get('/mutasi/pdf', [MutasiBarangController::class, 'exportMutasiPdf'])->name('mutasi.pdf');
-    });
-
-require __DIR__.'/settings.php';
-require __DIR__.'/auth.php';
+require __DIR__ . '/settings.php';
+require __DIR__ . '/auth.php';

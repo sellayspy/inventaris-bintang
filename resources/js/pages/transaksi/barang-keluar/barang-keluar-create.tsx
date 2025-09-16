@@ -1,6 +1,7 @@
 import AppLayout from '@/layouts/app-layout';
 import { router, useForm, usePage } from '@inertiajs/react';
 import React, { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
 
 export default function BarangKeluarCreate() {
     const { kategoriList, lokasiList, merekList, modelList, serialNumberList, flash } = usePage().props as unknown as {
@@ -24,7 +25,7 @@ export default function BarangKeluarCreate() {
     const [showModal, setShowModal] = useState(false);
     const [barangKeluarId, setBarangKeluarId] = useState<number | null>(null);
 
-    const { data, setData, post, processing, errors } = useForm<{
+    const { data, setData, post, processing, errors, reset } = useForm<{
         tanggal: string;
         kategori: string;
         merek: string;
@@ -101,23 +102,43 @@ export default function BarangKeluarCreate() {
         const hasDuplicate = serialNumbers.some((sn, i) => serialNumbers.indexOf(sn) !== i);
 
         if (hasDuplicate) {
-            alert('Terdapat serial number yang sama. Mohon periksa kembali.');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Duplikat Serial Number',
+                text: 'Terdapat serial number yang sama. Mohon periksa kembali.',
+            });
             return;
         }
 
         post('/barang-keluar', {
             onSuccess: () => {
-                setData({
-                    tanggal: '',
-                    kategori: '',
-                    merek: '',
-                    model: '',
-                    lokasi: '',
-                    serial_numbers: [''],
-                    status_keluar: {},
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil',
+                    text: 'Barang keluar berhasil disimpan!',
+                    timer: 2000,
+                    showConfirmButton: false,
                 });
+
+                // reset form
+                reset();
                 setSerialNumbers(['']);
                 setStatusKeluarList(['dipinjamkan']);
+            },
+            onError: (err) => {
+                if (err.serial_numbers) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: err.serial_numbers[0],
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Gagal',
+                        text: 'Terjadi kesalahan saat menyimpan data.',
+                    });
+                }
             },
         });
     };

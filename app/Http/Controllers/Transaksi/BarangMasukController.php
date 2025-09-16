@@ -59,12 +59,12 @@ class BarangMasukController extends Controller
             $search = strtolower($request->search);
             $query->whereHas('details.barang', function ($q) use ($search) {
                 $q->whereRaw('LOWER(serial_number) LIKE ?', ["%{$search}%"])
-                ->orWhereHas('modelBarang', function ($q2) use ($search) {
-                    $q2->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
-                        ->orWhereHas('merek', function ($q3) use ($search) {
-                            $q3->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"]);
-                        });
-                });
+                    ->orWhereHas('modelBarang', function ($q2) use ($search) {
+                        $q2->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
+                            ->orWhereHas('merek', function ($q3) use ($search) {
+                                $q3->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"]);
+                            });
+                    });
             });
         }
 
@@ -74,27 +74,54 @@ class BarangMasukController extends Controller
             $sort = 'desc';
         }
 
-        $barangMasuk = $query->orderBy('tanggal', $sort)
-        ->paginate(15)
-        ->withQueryString();
+        // Per page (default 10, bisa all)
+        $perPage = $request->input('per_page', 10);
 
-        return Inertia::render('transaksi/barang-masuk/barang-masuk-index', [
-            'barangMasuk' => $barangMasuk->through(function ($bm) {
-                // Ambil detail barang pertama dari relasi.
-                // Asumsinya, satu baris 'barang masuk' di tabel ini mewakili satu jenis barang.
+        if ($perPage === 'all') {
+            $barangMasuk = $query->orderBy('tanggal', $sort)->get();
+        } else {
+            $barangMasuk = $query->orderBy('tanggal', $sort)
+                ->paginate((int) $perPage)
+                ->withQueryString();
+        }
+
+        // Transform data
+        $barangMasukData = ($perPage === 'all')
+            ? $barangMasuk->map(function ($bm) {
                 $detail = $bm->details->first();
-
                 return [
                     'id' => $bm->id,
                     'tanggal' => $bm->tanggal,
-                    // Gunakan null-safe operator (?->) untuk menghindari error jika relasi kosong
                     'asal_barang' => $bm->asal?->nama,
                     'kategori' => $detail?->barang?->modelBarang?->kategori?->nama,
                     'merek' => $detail?->barang?->modelBarang?->merek?->nama,
                     'model' => $detail?->barang?->modelBarang?->nama,
                 ];
-            }),
-            'filters' => $request->only('tanggal', 'kategori_id', 'asal_barang_id', 'merek', 'search', 'sort_by'),
+            })
+            : $barangMasuk->through(function ($bm) {
+                $detail = $bm->details->first();
+                return [
+                    'id' => $bm->id,
+                    'tanggal' => $bm->tanggal,
+                    'asal_barang' => $bm->asal?->nama,
+                    'kategori' => $detail?->barang?->modelBarang?->kategori?->nama,
+                    'merek' => $detail?->barang?->modelBarang?->merek?->nama,
+                    'model' => $detail?->barang?->modelBarang?->nama,
+                ];
+            });
+
+        return Inertia::render('transaksi/barang-masuk/barang-masuk-index', [
+            'barangMasuk' => $barangMasukData,
+            'filters' => $request->only(
+                'tanggal',
+                'kategori_id',
+                'asal_barang_id',
+                'merek',
+                'search',
+                'sort_by',
+                'per_page',
+                'page'
+            ),
             'kategoriOptions' => KategoriBarang::select('id', 'nama')->get(),
             'asalOptions' => AsalBarang::select('id', 'nama')->get(),
             'merekOptions' => MerekBarang::select('id', 'nama')->get(),
@@ -106,22 +133,30 @@ class BarangMasukController extends Controller
 
     public function getModelByKategoriMerek(Request $request)
     {
-        $kategori = $request->input('kategori');
-        $merek = $request->input('merek');
-
-        $kategoriModel = KategoriBarang::where('nama', $kategori)->first();
-        $merekModel = MerekBarang::where('nama', $merek)->first();
-
-        if (!$kategoriModel || !$merekModel) {
+        if (!$request->filled('jenis_barang')) {
             return response()->json([]);
         }
 
-        $models = ModelBarang::where('kategori_id', $kategoriModel->id)
-            ->where('merek_id', $merekModel->id)
-            ->pluck('nama');
+        $models = ModelBarang::whereHas('jenis', function ($query) use ($request) {
+            $query->where('nama', $request->jenis_barang);
+        })->pluck('nama');
 
         return response()->json($models);
     }
+
+    public function getJenisBarang(Request $request)
+    {
+        if (!$request->filled('kategori')) {
+            return response()->json([]);
+        }
+
+        $jenisBarang = JenisBarang::whereHas('kategori', function ($query) use ($request) {
+            $query->where('nama', $request->kategori);
+        })->pluck('nama');
+
+        return response()->json($jenisBarang);
+    }
+
 
     public function getJenisByKategori(Request $request)
     {
@@ -154,47 +189,56 @@ class BarangMasukController extends Controller
     {
         $request->validate([
             'tanggal' => 'required|date',
-            'kategori' => 'required|string|max:100',
-            'merek' => 'required|string|max:100',
-            'model' => 'required|string|max:100',
-            'asal_barang' => 'nullable|string|max:100',
-            'serial_numbers' => 'required|array|min:1',
-            'serial_numbers.*' => 'required|string|distinct|unique:barang,serial_number',
+            'asal_barang'   => 'nullable|string|max:100',
+            'items' =>  'required|array|min:1',
+            'items.*.kategori' => 'required|string|max:100',
+            'items.*.merek' => 'required|string|max:100',
+            'items.*.model' => 'required|string|max:100',
+            'items.*.jenis_barang' => 'required|string|max:100',
+            'items.*.rak_id' => 'nullable|integer|exists:rak_barang,id',
+            'items.*.serial_numbers' => 'required|array|min:1',
+            'items.*.serial_numbers.*' => 'required|string|distinct|unique:barang,serial_number',
         ]);
 
         DB::transaction(function () use ($request) {
-            $kategori = KategoriBarang::firstOrCreate(['nama' => $request->kategori]);
-            $merek = MerekBarang::firstOrCreate(['nama' => $request->merek]);
-
-            $jenis = JenisBarang::firstOrCreate([
-                'kategori_id' => $kategori->id,
-                'nama' => $request->jenis_barang,
-            ]);
-
-            $model = ModelBarang::firstOrCreate([
-                'kategori_id' => $kategori->id,
-                'merek_id' => $merek->id,
-                'jenis_id' => $jenis->id,
-                'nama' => $request->model,
-            ]);
-
             $asal = null;
             if ($request->filled('asal_barang')) {
-                $asal = AsalBarang::firstOrCreate(['nama' => $request->asal_barang]);
+                $asal = AsalBarang::firtOrCreate(['nama' => $request->asal_barang]);
             }
 
             $barangMasuk = BarangMasuk::create([
-                'tanggal' => $request->tanggal,
-                'asal_barang_id' => $asal?->id,
-                'user_id' => auth()->id(),
+                'tanggal'   => $request->tanggal,
+                'asal_barang_id'    => $asal?->id,
+                'user_id'   => auth()->id(),
             ]);
+
 
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
 
-            foreach ($request->serial_numbers as $serial) {
+            foreach ($request->items as $item) {
+                $kategori = KategoriBarang::firstOrCreate(['nama' => $item['kategori']]);
+                $merk     = MerekBarang::firstOrCreate(['nama' => $item['merek']]);
+                $jenis    = JenisBarang::firstOrCreate([
+                    'kategori_id' => $kategori->id,
+                    'nama' => $item['jenis_barang'],
+                ]);
+                $model    = ModelBarang::firstOrCreate([
+                    'kategori_id' => $kategori->id,
+                    'merek_id'    => $merk->id,
+                    'jenis_id'    => $jenis->id,
+                    'nama'        => $item['model'],
+                ]);
+
+            $rak = null;
+            if (!empty($item['rak'])) {
+                $rak = RakBarang::firstOrCreate(['nama' => $item['rak']]);
+            }
+
+            foreach ($item['serial_numbers'] as $serial) {
                 $barang = Barang::create([
                     'model_id' => $model->id,
                     'jenis_barang_id' => $jenis->id,
+                    'rak_id' => $item['rak_id'] ?? null,
                     'asal_id' => $asal?->id,
                     'lokasi_id' => $lokasiGudang->id,
                     'serial_number' => $serial,
@@ -216,35 +260,45 @@ class BarangMasukController extends Controller
                 ]);
 
                 StockHelpers::barangMasuk($model->id, $lokasiGudang->id, 1);
-            }
+        }
+                }
         });
-        return redirect()->route('barang-masuk.index')->with('success', 'Barang berhasil dicatat.');
+        return redirect()->route('barang-masuk.index')->with('success', 'Transaksi barang berhasil dicatat.');
     }
 
     public function edit(BarangMasuk $barangMasuk)
     {
-        $barangMasuk->load('details.barang.modelBarang.kategori', 'details.barang.modelBarang.merek', 'details.barang.modelBarang.jenis', 'asal');
+        $barangMasuk->load('details.barang.modelBarang.kategori', 'details.barang.modelBarang.merek', 'details.barang.modelBarang.jenis', 'details.barang.rak', 'asal');
 
-        $firstDetail = $barangMasuk->details->first();
-        if (!$firstDetail) {
-            return redirect()->route('barang-masuk.index')->with('error', 'Data detail barang tidak ditemukan.');
+        // Kelompokkan detail berdasarkan model barang
+        $groupedDetails = $barangMasuk->details->groupBy('barang.model_id');
+
+        $items = [];
+        foreach ($groupedDetails as $modelId => $details) {
+            $firstDetail = $details->first();
+            if (!$firstDetail || !$firstDetail->barang) continue;
+
+            $modelBarang = $firstDetail->barang->modelBarang;
+
+            $items[] = [
+                'kategori' => $modelBarang->kategori->nama,
+                'merek' => $modelBarang->merek->nama,
+                'jenis_barang' => $modelBarang->jenis->nama,
+                'model' => $modelBarang->nama,
+                'rak' => $firstDetail->barang->rak?->nama,
+                // Ambil semua serial number untuk grup model ini
+                'serial_numbers' => $details->pluck('barang.serial_number')->all(),
+            ];
         }
-
-        $modelBarang = $firstDetail->barang->modelbarang;
-
-        $serialNumbers = $barangMasuk->details->pluck('barang.serial_number');
 
         return Inertia::render('transaksi/barang-masuk/barang-masuk-edit', [
             'barangMasuk' => [
                 'id' => $barangMasuk->id,
                 'tanggal' => $barangMasuk->tanggal,
-                'kategori' => $modelBarang->kategori->nama,
-                'merek' => $modelBarang->merek->nama,
-                'jenis_barang' => $modelBarang->jenis->nama,
-                'model' => $modelBarang->nama,
                 'asal_barang' => $barangMasuk->asal?->nama,
-                'serial_numbers' => $serialNumbers,
+                'items' => $items,
             ],
+            // List untuk dropdown tetap sama
             'kategoriList' => KategoriBarang::all(),
             'asalList' => AsalBarang::all(),
             'merekList' => MerekBarang::all(),
@@ -256,103 +310,90 @@ class BarangMasukController extends Controller
 
     public function update(Request $request, BarangMasuk $barangMasuk)
     {
+        // 1. Validasi dengan struktur data baru
         $request->validate([
             'tanggal' => 'required|date',
-            'kategori' => 'required|string|max:100',
-            'merek' => 'required|string|max:100',
-            'model' => 'required|string|max:100',
-            'jenis_barang' => 'required|string|max:100',
             'asal_barang' => 'nullable|string|max:100',
-            'serial_numbers' => 'required|array|min:1',
-            'serial_numbers.*' => [
+            'items' => 'required|array|min:1',
+            'items.*.kategori' => 'required|string|max:100',
+            'items.*.merek' => 'required|string|max:100',
+            'items.*.jenis_barang' => 'required|string|max:100',
+            'items.*.model' => 'required|string|max:100',
+            'items.*.rak_id' => 'nullable|integer|exists:rak_barang,id',
+            'items.*.serial_numbers' => 'required|array|min:1',
+            'items.*.serial_numbers.*' => [
                 'required',
                 'string',
                 'distinct',
                 // Pastikan serial number unik, kecuali untuk barang yang sudah ada di transaksi ini
-                Rule::unique('barang', 'serial_number')->where(function ($query) use ($barangMasuk) {
-                    $barangIds = $barangMasuk->details->pluck('barang_id');
-                    return $query->whereNotIn('id', $barangIds);
-                }),
+                Rule::unique('barang', 'serial_number')->ignore($barangMasuk->details->pluck('barang_id')),
             ],
         ]);
 
         DB::transaction(function () use ($request, $barangMasuk) {
-            $barangMasuk->load('details.barang.modelBarang');
-            $oldBarangIds = $barangMasuk->details->pluck('barang_id');
-            $oldModel = $barangMasuk->details->first()->barang->modelBarang;
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
 
-            $kategori = KategoriBarang::firstOrCreate(['nama' => $request->kategori]);
-            $merek = MerekBarang::firstOrCreate(['nama' => $request->merek]);
-            $jenis = JenisBarang::firstOrCreate(['kategori_id' => $kategori->id, 'nama' => $request->jenis_barang]);
-            $model = ModelBarang::firstOrCreate(['kategori_id' => $kategori->id, 'merek_id' => $merek->id, 'jenis_id' => $jenis->id, 'nama' => $request->model]);
+            // 2. HAPUS SEMUA DATA LAMA YANG TERKAIT TRANSAKSI INI
+            // Penting: Lakukan dalam urutan yang benar untuk menghindari constraint error
+            foreach ($barangMasuk->details as $detail) {
+                if ($detail->barang) {
+                    // Kurangi stok dari model lama
+                    StockHelpers::barangKeluar($detail->barang->model_id, $lokasiGudang->id, 1);
+
+                    // Hapus mutasi dan barangnya
+                    MutasiBarang::where('barang_id', $detail->barang_id)->delete();
+                    $detail->barang->delete();
+                }
+            }
+            // Hapus semua detail transaksi
+            $barangMasuk->details()->delete();
+
+            // 3. BUAT ULANG DATA BERDASARKAN REQUEST BARU (logika sama seperti 'store')
             $asal = $request->filled('asal_barang') ? AsalBarang::firstOrCreate(['nama' => $request->asal_barang]) : null;
 
-            // Update data master BarangMasuk
+            // Update header transaksi
             $barangMasuk->update([
                 'tanggal' => $request->tanggal,
                 'asal_barang_id' => $asal?->id,
             ]);
 
-            $existingSerials = Barang::whereIn('id', $oldBarangIds)->pluck('serial_number', 'id')->all();
-            $newSerials = $request->serial_numbers;
+            // Loop untuk setiap jenis barang
+            foreach ($request->items as $item) {
+                $kategori = KategoriBarang::firstOrCreate(['nama' => $item['kategori']]);
+                $merek = MerekBarang::firstOrCreate(['nama' => $item['merek']]);
+                $jenis = JenisBarang::firstOrCreate(['kategori_id' => $kategori->id, 'nama' => $item['jenis_barang']]);
+                $model = ModelBarang::firstOrCreate(['kategori_id' => $kategori->id, 'merek_id' => $merek->id, 'jenis_id' => $jenis->id, 'nama' => $item['model']]);
+                $rak = !empty($item['rak']) ? RakBarang::firstOrCreate(['nama' => $item['rak']]) : null;
 
-            // 1. Hapus barang & detail yang tidak ada lagi di request
-            $serialsToDelete = array_diff($existingSerials, $newSerials);
-            if (!empty($serialsToDelete)) {
-                $barangIdsToDelete = array_keys($serialsToDelete);
-                // Kurangi stok lama sebelum menghapus
-                StockHelpers::barangKeluar($oldModel->id, $lokasiGudang->id, count($barangIdsToDelete));
+                // Loop untuk setiap serial number
+                foreach ($item['serial_numbers'] as $serial) {
+                    $barang = Barang::create([
+                        'model_id' => $model->id,
+                        'jenis_barang_id' => $jenis->id,
+                        'rak_id' => $item['rak_id'] ?? null,
+                        'asal_id' => $asal?->id,
+                        'lokasi_id' => $lokasiGudang->id,
+                        'serial_number' => $serial,
+                        'kondisi_awal' => 'baru',
+                        'status' => 'baik',
+                    ]);
 
-                BarangMasukDetail::whereIn('barang_id', $barangIdsToDelete)->delete();
-                MutasiBarang::whereIn('barang_id', $barangIdsToDelete)->delete();
-                Barang::whereIn('id', $barangIdsToDelete)->delete();
-            }
+                    BarangMasukDetail::create([
+                        'barang_masuk_id' => $barangMasuk->id,
+                        'barang_id' => $barang->id,
+                    ]);
 
-            // 2. Tambah barang & detail baru
-            $serialsToAdd = array_diff($newSerials, $existingSerials);
-            foreach ($serialsToAdd as $serial) {
-                $barang = Barang::create([
-                    'model_id' => $model->id,
-                    'jenis_barang_id' => $jenis->id,
-                    'asal_id' => $asal?->id,
-                    'lokasi_id' => $lokasiGudang->id,
-                    'serial_number' => $serial,
-                    'kondisi_awal' => 'baru',
-                    'status' => 'baik',
-                ]);
+                    MutasiBarang::create([
+                        'barang_id' => $barang->id,
+                        'lokasi_asal_id' => null,
+                        'lokasi_tujuan_id' => $lokasiGudang->id,
+                        'tanggal' => $request->tanggal,
+                        'keterangan' => 'Barang masuk dari ' . ($asal?->nama ?? 'manual'),
+                    ]);
 
-                BarangMasukDetail::create([
-                    'barang_masuk_id' => $barangMasuk->id,
-                    'barang_id' => $barang->id,
-                ]);
-
-                MutasiBarang::create([
-                    'barang_id' => $barang->id,
-                    'lokasi_asal_id' => null,
-                    'lokasi_tujuan_id' => $lokasiGudang->id,
-                    'tanggal' => $request->tanggal,
-                    'keterangan' => 'Barang masuk dari sumber ' . ($asal?->nama ?? 'manual'),
-                ]);
-
-                // Tambah stok baru
-                StockHelpers::barangMasuk($model->id, $lokasiGudang->id, 1);
-            }
-
-            // 3. Update barang yang sudah ada (jika ada perubahan atribut selain serial number)
-            // Cek apakah model barang berubah
-            if ($oldModel->id !== $model->id) {
-                $barangIdsToUpdate = array_keys(array_diff($existingSerials, $serialsToDelete));
-                // Kurangi stok model lama
-                StockHelpers::barangKeluar($oldModel->id, $lokasiGudang->id, count($barangIdsToUpdate));
-                // Update barang ke model baru
-                Barang::whereIn('id', $barangIdsToUpdate)->update([
-                    'model_id' => $model->id,
-                    'jenis_barang_id' => $jenis->id,
-                    'asal_id' => $asal?->id,
-                ]);
-                // Tambah stok model baru
-                StockHelpers::barangMasuk($model->id, $lokasiGudang->id, count($barangIdsToUpdate));
+                    // Tambah stok untuk model baru
+                    StockHelpers::barangMasuk($model->id, $lokasiGudang->id, 1);
+                }
             }
         });
 
@@ -404,5 +445,4 @@ class BarangMasukController extends Controller
         return redirect()->route('barang-masuk.index')
             ->with('success', 'Data barang masuk dan semua item terkait berhasil dihapus.');
     }
-
 }

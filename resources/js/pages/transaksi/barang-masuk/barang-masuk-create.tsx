@@ -1,6 +1,7 @@
 import AppLayout from '@/layouts/app-layout';
 import { Link, useForm, usePage } from '@inertiajs/react';
 import React, { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
 
 export default function BarangMasukCreate() {
     const { kategoriList, asalList, merekList, modelList, rakList, jenisList } = usePage().props as unknown as {
@@ -19,79 +20,114 @@ export default function BarangMasukCreate() {
 
     const kategoriOptions = kategoriList.map((item) => item.nama);
     const asalOptions = asalList.map((item) => item.nama);
-    const [rakTerpilih, setRakTerpilih] = useState('');
-    const [barisOptions, setBarisOptions] = useState<string[]>([]);
-    const [barisTerpilih, setBarisTerpilih] = useState('');
-    const [kodeOtomatis, setKodeOtomatis] = useState('');
-    const [jenisOptions, setJenisOptions] = useState<string[]>([]);
-    const [modelOptions, setModelOptions] = useState<string[]>([]);
+    const merekOptions = merekList.map((item) => item.nama);
 
-    const [serialNumbers, setSerialNumbers] = useState<string[]>(['']);
-
-    const { data, setData, post, processing, errors } = useForm({
+    const { data, setData, post, processing, errors, reset } = useForm({
         tanggal: '',
-        kategori: '',
-        merek: '',
-        model: '',
-        jenis_barang: '',
         asal_barang: '',
-        serial_numbers: [''],
-        rak_id: '',
+        items: [
+            {
+                kategori: '',
+                merek: '',
+                model: '',
+                jenis_barang: '',
+                serial_numbers: [''],
+            },
+        ],
     });
 
-    const handleSerialChange = (value: string, index: number) => {
-        const updated = [...serialNumbers];
-        updated[index] = value;
-        setSerialNumbers(updated);
-        setData('serial_numbers', updated);
+   const handleItemChange = (index: number, field: keyof Item, value: any) => {
+        const updatedItems = [...data.items];
+        updatedItems[index] = {...updatedItems[index], [field]: value};
+
+        if(field === 'kategori') {
+            updatedItems[index].model = '';
+            updatedItems[index].jenis_barang = '';
+        }
+        if(field === 'jeni_barang' || field === 'model') {
+            updatedItems[index].model = '';
+        }
+
+        setData('items', updatedItems);
+   }
+
+    const addItemRow = () => {
+        setData('items', [
+            ...data.items,
+            {
+                kategori: '',
+                merek: '',
+                model: '',
+                jenis_barang: '',
+                serial_numbers: [''],
+            }
+        ])
+    }
+
+    const removeItemRows = (index: number) => {
+        if(data.items.length > 1){
+            setData('items', data.items.filter((_, i) => i !== index));
+        }
+    }
+
+    const handleSerialChange = (value: string, index: number, itemIndex: number) => {
+        const updatedItems = [...data.items];
+        updatedItems[itemIndex].serial_numbers[index] = value;
+        setData('items', updatedItems);
     };
 
-    const addSerialField = () => {
-        const updated = [...serialNumbers, ''];
-        setSerialNumbers(updated);
-        setData('serial_numbers', updated);
+    const addSerialField = (itemIndex: number) => {
+        const updatedItems = [...data.items];
+        updatedItems[itemIndex].serial_numbers.push('');
+        setData('items', updatedItems);
     };
 
-    const removeSerialField = (index: number) => {
-        const updated = serialNumbers.filter((_, i) => i !== index);
-        setSerialNumbers(updated);
-        setData('serial_numbers', updated);
+    const removeSerialField = (itemIndex: number, index: number) => {
+        const updatedItems = [...data.items];
+        if(updatedItems[itemIndex].serial_numbers.length > 1){
+            updatedItems[itemIndex].serial_numbers = updatedItems[itemIndex].serial_numbers.filter((_, i) => i !== index);
+            setData('items', updatedItems);
+        }
     };
 
-    const handleRakChange = (rakNama: string) => {
-        setRakTerpilih(rakNama);
-        setBarisOptions(rakList.filter((rak) => rak.nama_rak === rakNama).map((rak) => rak.baris));
-        setBarisTerpilih('');
-        setKodeOtomatis('');
-    };
-
-    const handleBarisChange = (baris: string) => {
-        setBarisTerpilih(baris);
-        const rak = rakList.find((r) => r.nama_rak === rakTerpilih && r.baris === baris);
-        setKodeOtomatis(rak?.kode_rak || '');
-        setData('rak_id', rak ? String(rak.id) : '');
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
+   const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/barang-masuk');
+        post(route('barang-masuk.store'), {
+            onSuccess: () => {
+                Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Data barang masuk berhasil disimpan.', timer: 2000, showConfirmButton: false });
+                reset();
+            },
+            onError: (err) => {
+                // Error handling tetap sama, Inertia akan memetakan errornya
+                Swal.fire({ icon: 'error', title: 'Gagal', text: 'Terjadi kesalahan. Periksa kembali isian form Anda.' });
+            }
+        });
     };
 
-    useEffect(() => {
-        if (!data.kategori) return;
 
+    /* useEffect(() => {
+        // Keluar jika Kategori belum dipilih
+        if (!data.kategori) {
+            setJenisOptions([]); // Kosongkan pilihan jenis
+            return;
+        }
+
+        // Ambil data Jenis Barang yang relevan
         fetch(`/ajax/jenis-barang?kategori=${encodeURIComponent(data.kategori)}`)
             .then((res) => res.json())
             .then((res) => setJenisOptions(res));
     }, [data.kategori]);
 
     useEffect(() => {
-        if (!data.kategori || !data.merek) return;
+        if (!data.jenis_barang) {
+            setModelOptions([]);
+            return;
+        }
 
-        fetch(`/ajax/model-barang?kategori=${encodeURIComponent(data.kategori)}&merek=${encodeURIComponent(data.merek)}`)
+        fetch(`/ajax/model-barang?jenis_barang=${encodeURIComponent(data.jenis_barang)}`)
             .then((res) => res.json())
             .then((res) => setModelOptions(res));
-    }, [data.kategori, data.merek]);
+    }, [data.jenis_barang]); */
 
     return (
         <AppLayout>
@@ -99,182 +135,97 @@ export default function BarangMasukCreate() {
                 <h1 className="mb-8 text-3xl font-bold text-gray-800">Tambah Barang Masuk</h1>
 
                 <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                    {/* Tanggal */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Tanggal</label>
-                        <input
-                            type="date"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.tanggal}
-                            onChange={(e) => setData('tanggal', e.target.value)}
-                        />
-                        {errors.tanggal && <p className="text-sm text-red-500">{errors.tanggal}</p>}
+                   {/* Header Form: Tanggal & Asal Barang */}
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 mb-8">
+                         <div>
+                             <label htmlFor="tanggal">Tanggal</label>
+                             <input id="tanggal" type="date" value={data.tanggal} onChange={(e) => setData('tanggal', e.target.value)} />
+                             {errors.tanggal && <p className="text-sm text-red-500 mt-1">{errors.tanggal}</p>}
+                         </div>
+                         <div>
+                             <label htmlFor="asal_barang">Asal Barang</label>
+                             <input id="asal_barang" type="text" list="asal-suggest" value={data.asal_barang} onChange={(e) => setData('asal_barang', e.target.value)} />
+                             <datalist id="asal-suggest">{asalOptions.map((a) => <option key={a} value={a} />)}</datalist>
+                             {errors.asal_barang && <p className="text-sm text-red-500 mt-1">{errors.asal_barang}</p>}
+                         </div>
                     </div>
 
-                    {/* Kategori */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Kategori</label>
-                        <input
-                            type="text"
-                            list="kategori-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.kategori}
-                            onChange={(e) => setData('kategori', e.target.value)}
-                        />
-                        <datalist id="kategori-suggest">
-                            {kategoriOptions.map((k) => (
-                                <option key={k} value={k} />
-                            ))}
-                        </datalist>
-                        {errors.kategori && <p className="text-sm text-red-500">{errors.kategori}</p>}
-                    </div>
+                    {/* 5. Looping untuk merender setiap baris item */}
+                    {data.items.map((item, index) => {
+                        // Logika filter untuk dependent dropdown
+                        const selectedKategori = kategoriList.find(k => k.nama === item.kategori);
+                        const selectedMerek = merekList.find(m => m.nama === item.merek);
+                        const filteredJenis = selectedKategori ? jenisList.filter(j => j.kategori_id === selectedKategori.id) : [];
+                        const selectedJenis = filteredJenis.find(j => j.nama === item.jenis_barang);
+                        const filteredModel = (selectedJenis && selectedMerek) ? modelList.filter(m => m.jenis_id === selectedJenis.id && m.merek_id === selectedMerek.id) : [];
 
-                    {/* Merek */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Merek</label>
-                        <input
-                            type="text"
-                            list="merek-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.merek}
-                            onChange={(e) => setData('merek', e.target.value)}
-                        />
-                        <datalist id="merek-suggest">
-                            {merekList.map((merek) => (
-                                <option key={merek.id} value={merek.nama} />
-                            ))}
-                        </datalist>
-                        {errors.merek && <p className="text-sm text-red-500">{errors.merek}</p>}
-                    </div>
-
-                    {/* Model */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Model</label>
-                        <input
-                            type="text"
-                            list="model-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.model}
-                            onChange={(e) => setData('model', e.target.value)}
-                        />
-                        <datalist id="model-suggest">
-                            {modelOptions.map((m) => (
-                                <option key={m} value={m} />
-                            ))}
-                        </datalist>
-                    </div>
-
-                    {/* Jenis Barang */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Jenis Barang</label>
-                        <input
-                            type="text"
-                            list="jenis-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.jenis_barang}
-                            onChange={(e) => setData('jenis_barang', e.target.value)}
-                        />
-                        <datalist id="jenis-suggest">
-                            {jenisOptions.map((j) => (
-                                <option key={j} value={j} />
-                            ))}
-                        </datalist>
-                    </div>
-
-                    {/* Asal Barang */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Asal Barang</label>
-                        <input
-                            type="text"
-                            list="asal-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.asal_barang}
-                            onChange={(e) => setData('asal_barang', e.target.value)}
-                        />
-                        <datalist id="asal-suggest">
-                            {asalOptions.map((a) => (
-                                <option key={a} value={a} />
-                            ))}
-                        </datalist>
-                        {errors.asal_barang && <p className="text-sm text-red-500">{errors.asal_barang}</p>}
-                    </div>
-
-                    {/* Rak + Baris + Kode Rak (Kelompokkan dalam satu baris) */}
-                    <div className="flex gap-4">
-                        {/* Nama Rak */}
-                        <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700">Nama Rak</label>
-                            <select
-                                value={rakTerpilih}
-                                onChange={(e) => handleRakChange(e.target.value)}
-                                className="mt-1 w-full rounded border p-2"
-                                required
-                            >
-                                <option value="">-- Pilih Rak --</option>
-                                {[...new Set(rakList.map((rak) => rak.nama_rak))].map((nama, idx) => (
-                                    <option key={idx} value={nama}>
-                                        {nama}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Baris */}
-                        {barisOptions.length > 0 && (
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-700">Baris</label>
-                                <select
-                                    value={barisTerpilih}
-                                    onChange={(e) => handleBarisChange(e.target.value)}
-                                    className="mt-1 w-full rounded border p-2"
-                                    required
-                                >
-                                    <option value="">-- Pilih Baris --</option>
-                                    {barisOptions.map((baris, idx) => (
-                                        <option key={idx} value={baris}>
-                                            {baris}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-
-                        {/* Kode Rak */}
-                        {kodeOtomatis && (
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-700">Kode Rak</label>
-                                <input type="text" value={kodeOtomatis} readOnly className="mt-1 w-full rounded border bg-gray-100 p-2" />
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Serial Number (Full Width) */}
-                    <div className="md:col-span-2">
-                        <label className="mb-2 block text-sm font-semibold text-red-700">
-                            Serial Number <span className="text-xs text-red-400">(wajib)</span>
-                        </label>
-                        {serialNumbers.map((serial, index) => (
-                            <div key={index} className="mb-2 flex items-center gap-2">
-                                <input
-                                    type="text"
-                                    className="flex-1 rounded border-2 border-red-400 bg-red-50 p-2"
-                                    value={serial}
-                                    onChange={(e) => handleSerialChange(e.target.value, index)}
-                                    placeholder={`Serial #${index + 1}`}
-                                />
-                                {serialNumbers.length > 1 && (
-                                    <button type="button" className="text-sm text-red-600 hover:underline" onClick={() => removeSerialField(index)}>
-                                        Hapus
+                        return (
+                            <div key={index} className="border-2 border-dashed p-4 rounded-lg mb-6 relative">
+                                <h3 className="font-semibold text-lg mb-4">Item #{index + 1}</h3>
+                                {data.items.length > 1 && (
+                                    <button type="button" variant="destructive" size="sm" className="absolute top-4 right-4" onClick={() => removeItemRow(index)}>
+                                        Hapus Item
                                     </button>
                                 )}
-                            </div>
-                        ))}
-                        <button type="button" className="mt-1 text-sm text-blue-600 hover:underline" onClick={addSerialField}>
-                            + Tambah Serial
-                        </button>
-                        {errors.serial_numbers && <p className="text-sm text-red-500">{errors.serial_numbers}</p>}
-                    </div>
 
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {/* Kategori */}
+                                    <div>
+                                        <label>Kategori</label>
+                                        <input type="text" list="kategori-suggest" value={item.kategori} onChange={(e) => handleItemChange(index, 'kategori', e.target.value)} />
+                                        <datalist id="kategori-suggest">{kategoriOptions.map((k) => <option key={k} value={k} />)}</datalist>
+                                        {errors[`items.${index}.kategori`] && <p className="text-sm text-red-500 mt-1">{errors[`items.${index}.kategori`]}</p>}
+                                    </div>
+
+                                    {/* Merek */}
+                                    <div>
+                                        <label>Merek</label>
+                                        <input type="text" list="merek-suggest" value={item.merek} onChange={(e) => handleItemChange(index, 'merek', e.target.value)} />
+                                        <datalist id="merek-suggest">{merekOptions.map((m) => <option key={m} value={m} />)}</datalist>
+                                        {errors[`items.${index}.merek`] && <p className="text-sm text-red-500 mt-1">{errors[`items.${index}.merek`]}</p>}
+                                    </div>
+
+                                    {/* Jenis Barang */}
+                                    <div>
+                                        <label>Jenis Barang</label>
+                                        <input type="text" list={`jenis-suggest-${index}`} value={item.jenis_barang} onChange={(e) => handleItemChange(index, 'jenis_barang', e.target.value)} disabled={!item.kategori} />
+                                        <datalist id={`jenis-suggest-${index}`}>{filteredJenis.map(j => <option key={j.id} value={j.nama}/>)}</datalist>
+                                        {errors[`items.${index}.jenis_barang`] && <p className="text-sm text-red-500 mt-1">{errors[`items.${index}.jenis_barang`]}</p>}
+                                    </div>
+
+                                    {/* Model */}
+                                    <div>
+                                        <label>Model</label>
+                                        <input type="text" list={`model-suggest-${index}`} value={item.model} onChange={(e) => handleItemChange(index, 'model', e.target.value)} disabled={!item.jenis_barang || !item.merek} />
+                                        <datalist id={`model-suggest-${index}`}>{filteredModel.map(m => <option key={m.id} value={m.nama} />)}</datalist>
+                                        {errors[`items.${index}.model`] && <p className="text-sm text-red-500 mt-1">{errors[`items.${index}.model`]}</p>}
+                                    </div>
+                                </div>
+
+                                {/* Serial Numbers per Item */}
+                                <div className="mt-6">
+                                    <label className="font-semibold text-red-700">Serial Number</label>
+                                    {item.serial_numbers.map((serial, serialIndex) => (
+                                        <div key={serialIndex} className="flex items-center gap-2 mt-2">
+                                            <input type="text" value={serial} onChange={(e) => handleSerialChange(index, serialIndex, e.target.value)} placeholder={`Serial #${serialIndex + 1}`} />
+                                            {item.serial_numbers.length > 1 && (
+                                                <button type="button" variant="ghost" className="text-red-600" onClick={() => removeSerialField(index, serialIndex)}>Hapus</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button type="button" variant="link" className="mt-2" onClick={() => addSerialField(index)}>+ Tambah Serial</button>
+                                    {errors[`items.${index}.serial_numbers`] && <p className="text-sm text-red-500 mt-1">{errors[`items.${index}.serial_numbers`]}</p>}
+                                </div>
+                            </div>
+                        )
+                    })}
+
+                    {/* Tombol Tambah Item & Submit */}
+                    <div className="flex justify-between items-center mt-8">
+                        <button type="button" variant="outline" onClick={addItemRow}>
+                            + Tambah Jenis Barang Lain
+                        </button>
+                    </div>
                     {/* Submit Button (Full Width) */}
                     <div className="flex justify-end space-x-4 pt-4 md:col-span-2">
                         <Link href={route('barang.index')} className="rounded bg-gray-500 px-6 py-2 text-white hover:bg-gray-600">
