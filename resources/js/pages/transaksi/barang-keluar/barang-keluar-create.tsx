@@ -1,369 +1,300 @@
 import AppLayout from '@/layouts/app-layout';
-import { router, useForm, usePage } from '@inertiajs/react';
-import React, { useEffect, useState } from 'react';
+import { Link, useForm, usePage } from '@inertiajs/react';
 import Swal from 'sweetalert2';
 
-export default function BarangKeluarCreate() {
-    const { kategoriList, lokasiList, merekList, modelList, serialNumberList, flash } = usePage().props as unknown as {
-        kategoriList: Array<{ id: number; nama: string }>;
-        lokasiList: Array<{ id: number; nama: string }>;
-        merekList: Array<{ id: number; nama: string }>;
-        modelList: Array<{ id: number; nama: string }>;
-        serialNumberList: Record<string, string[]>;
-        flash?: {
-            barang_keluar_id?: number;
-            [key: string]: any;
-        };
-    };
+interface KeluarInfo {
+    serial_number: string;
+    status_keluar: 'dipinjamkan' | 'dijual' | 'maintenance';
+}
 
-    const kategoriOptions = kategoriList.map((item) => item.nama);
-    const lokasiOptions = lokasiList.map((item) => item.nama);
+interface Item {
+    kategori: string;
+    merek: string;
+    model: string;
+    keluar_info: KeluarInfo[];
+}
 
-    const [serialNumbers, setSerialNumbers] = useState<string[]>(['']);
-    const [statusKeluarList, setStatusKeluarList] = useState<string[]>(['dipinjamkan']);
+// Komponen untuk satu baris item
+const ItemRow = ({ item, index, onItemChange, onRemove, errors, lists }) => {
+    // Filter merek berdasarkan kategori yang dipilih di baris ini
+    const selectedKategoriId = lists.kategoriList.find((k) => k.nama === item.kategori)?.id;
+    const filteredMerekList = lists.merekList.filter((merek) => merek.model_barang.some((model) => model.jenis?.kategori_id === selectedKategoriId));
 
-    const [showModal, setShowModal] = useState(false);
-    const [barangKeluarId, setBarangKeluarId] = useState<number | null>(null);
+    // Filter model berdasarkan merek dan kategori yang dipilih
+    const selectedMerekId = lists.merekList.find((m) => m.nama === item.merek)?.id;
+    const filteredModelList = lists.modelList.filter(
+        (model) => model.merek_id === selectedMerekId && model.jenis?.kategori_id === selectedKategoriId,
+    );
 
-    const { data, setData, post, processing, errors, reset } = useForm<{
-        tanggal: string;
-        kategori: string;
-        merek: string;
-        model: string;
-        lokasi: string;
-        serial_numbers: string[];
-        status_keluar: Record<string, string>; // ✅ fix here
-    }>({
-        tanggal: '',
-        kategori: '',
-        merek: '',
-        model: '',
-        lokasi: '',
-        serial_numbers: [''],
-        status_keluar: {},
-    });
+    // Dapatkan serial number yang tersedia untuk model yang dipilih
+    const selectedKey = `${item.merek}|${item.model}`;
+    const allAvailableSerials = lists.serialNumberList[selectedKey] || [];
+    const usedSerialsInRow = item.keluar_info.map((info) => info.serial_number);
+    const availableSerialsForSuggestions = allAvailableSerials.filter((sn) => !usedSerialsInRow.includes(sn));
 
-    const selectedKey = `${data.merek}|${data.model}`;
-    const availableSerials = serialNumberList[selectedKey] || [];
-
-    const filteredSerialSuggestions = availableSerials.filter((sn) => !serialNumbers.includes(sn));
-
-    const handleSerialChange = (value: string, index: number) => {
-        if (isDuplicateSerial(value, index)) {
-            alert(`Serial number "${value}" sudah diinput sebelumnya.`);
-            return;
+    const handleFieldChange = (field, value) => {
+        const newItem = { ...item, [field]: value };
+        // Reset field turunan jika field utama berubah
+        if (field === 'kategori') {
+            newItem.merek = '';
+            newItem.model = '';
+            newItem.keluar_info = [{ serial_number: '', status_keluar: 'dipinjamkan' }];
+        } else if (field === 'merek') {
+            newItem.model = '';
+            newItem.keluar_info = [{ serial_number: '', status_keluar: 'dipinjamkan' }];
         }
-
-        const updated = [...serialNumbers];
-        updated[index] = value;
-        setSerialNumbers(updated);
-        setData('serial_numbers', updated);
-
-        const newStatusMap = { ...data.status_keluar };
-        newStatusMap[value] = statusKeluarList[index] ?? 'dipinjamkan';
-        setData('status_keluar', newStatusMap);
+        onItemChange(index, newItem);
     };
 
-    const handleStatusChange = (value: string, index: number) => {
-        const updated = [...statusKeluarList];
-        updated[index] = value;
-        setStatusKeluarList(updated);
-
-        // sinkronisasi dengan serial yang sesuai
-        const serial = serialNumbers[index];
-        const newStatusMap = { ...data.status_keluar };
-        newStatusMap[serial] = value;
-        setData('status_keluar', newStatusMap);
+    const handleKeluarInfoChange = (infoIndex, field, value) => {
+        const newKeluarInfo = [...item.keluar_info];
+        newKeluarInfo[infoIndex] = { ...newKeluarInfo[infoIndex], [field]: value };
+        onItemChange(index, { ...item, keluar_info: newKeluarInfo });
     };
 
     const addSerialField = () => {
-        setSerialNumbers([...serialNumbers, '']);
-        setStatusKeluarList([...statusKeluarList, 'dipinjamkan']);
+        const newKeluarInfo = [...item.keluar_info, { serial_number: '', status_keluar: 'dipinjamkan' }];
+        onItemChange(index, { ...item, keluar_info: newKeluarInfo });
     };
 
-    const removeSerialField = (index: number) => {
-        const newSerials = serialNumbers.filter((_, i) => i !== index);
-        const newStatusList = statusKeluarList.filter((_, i) => i !== index);
-
-        const newStatusMap: Record<string, string> = {};
-        newSerials.forEach((sn, i) => {
-            newStatusMap[sn] = newStatusList[i] ?? 'dipinjamkan';
-        });
-
-        setSerialNumbers(newSerials);
-        setStatusKeluarList(newStatusList);
-        setData('serial_numbers', newSerials);
-        setData('status_keluar', newStatusMap);
+    const removeSerialField = (infoIndex) => {
+        const newKeluarInfo = item.keluar_info.filter((_, i) => i !== infoIndex);
+        onItemChange(index, { ...item, keluar_info: newKeluarInfo });
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    return (
+        <div className="relative mb-6 rounded-lg border-2 border-gray-200 p-4">
+            <h3 className="mb-3 text-lg font-semibold text-gray-700">Item #{index + 1}</h3>
+            {onRemove && (
+                <button type="button" onClick={onRemove} className="absolute top-2 right-2 font-bold text-red-500 hover:text-red-700">
+                    &times; Hapus Item
+                </button>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {/* Kategori */}
+                <div>
+                    <label>Kategori</label>
+                    <input
+                        type="text"
+                        list="kategori-suggest"
+                        className="mt-1 w-full rounded border p-2"
+                        value={item.kategori}
+                        onChange={(e) => handleFieldChange('kategori', e.target.value)}
+                    />
+                    <datalist id="kategori-suggest">
+                        {lists.kategoriList.map((k) => (
+                            <option key={k.id} value={k.nama} />
+                        ))}
+                    </datalist>
+                </div>
+                {/* Merek */}
+                <div>
+                    <label>Merek</label>
+                    <input
+                        type="text"
+                        list={`merek-suggest-${index}`}
+                        className="mt-1 w-full rounded border p-2"
+                        value={item.merek}
+                        onChange={(e) => handleFieldChange('merek', e.target.value)}
+                    />
+                    <datalist id={`merek-suggest-${index}`}>
+                        {filteredMerekList.map((m) => (
+                            <option key={m.id} value={m.nama} />
+                        ))}
+                    </datalist>
+                </div>
+                {/* Model */}
+                <div>
+                    <label>Model</label>
+                    <input
+                        type="text"
+                        list={`model-suggest-${index}`}
+                        className="mt-1 w-full rounded border p-2"
+                        value={item.model}
+                        onChange={(e) => handleFieldChange('model', e.target.value)}
+                    />
+                    <datalist id={`model-suggest-${index}`}>
+                        {filteredModelList.map((m) => (
+                            <option key={m.id} value={m.nama} />
+                        ))}
+                    </datalist>
+                </div>
+            </div>
+
+            {/* Serial Numbers & Status */}
+            <div className="mt-4">
+                <label className="mb-2 block text-sm font-semibold text-red-700">Serial Number & Status</label>
+                {item.keluar_info.map((info, infoIndex) => (
+                    <div key={infoIndex} className="mb-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                className="flex-1 rounded border-2 border-red-400 bg-red-50 p-2"
+                                value={info.serial_number}
+                                onChange={(e) => handleKeluarInfoChange(infoIndex, 'serial_number', e.target.value)}
+                                placeholder={`Serial #${infoIndex + 1}`}
+                                list={`serial-suggest-${index}-${infoIndex}`}
+                            />
+                            <datalist id={`serial-suggest-${index}-${infoIndex}`}>
+                                {availableSerialsForSuggestions.map((sn) => (
+                                    <option key={sn} value={sn} />
+                                ))}
+                            </datalist>
+                            {item.keluar_info.length > 1 && (
+                                <button type="button" className="text-sm text-red-600 hover:underline" onClick={() => removeSerialField(infoIndex)}>
+                                    Hapus
+                                </button>
+                            )}
+                        </div>
+                        <div>
+                            <select
+                                value={info.status_keluar}
+                                onChange={(e) => handleKeluarInfoChange(infoIndex, 'status_keluar', e.target.value)}
+                                className="w-full rounded border-2 border-blue-400 bg-blue-50 p-2"
+                            >
+                                <option value="dipinjamkan">Dipinjamkan</option>
+                                <option value="dijual">Dijual</option>
+                                <option value="maintenance">Maintenance</option>
+                            </select>
+                        </div>
+                    </div>
+                ))}
+                <button type="button" className="mt-1 text-sm text-blue-600 hover:underline" onClick={addSerialField}>
+                    + Tambah Serial
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export default function BarangKeluarCreate() {
+    const { lokasiList, kategoriList, merekList, modelList, serialNumberList } = usePage().props as any;
+
+    const { data, setData, post, processing, errors, reset } = useForm({
+        tanggal: new Date().toISOString().slice(0, 10),
+        lokasi: '',
+        items: [
+            {
+                kategori: '',
+                merek: '',
+                model: '',
+                keluar_info: [{ serial_number: '', status_keluar: 'dipinjamkan' }],
+            },
+        ] as Item[],
+    });
+
+    const handleItemChange = (index, updatedItem) => {
+        const newItems = [...data.items];
+        newItems[index] = updatedItem;
+        setData('items', newItems);
+    };
+
+    const addItemRow = () => {
+        setData('items', [
+            ...data.items,
+            {
+                kategori: '',
+                merek: '',
+                model: '',
+                keluar_info: [{ serial_number: '', status_keluar: 'dipinjamkan' }],
+            },
+        ]);
+    };
+
+    const removeItemRow = (index) => {
+        setData(
+            'items',
+            data.items.filter((_, i) => i !== index),
+        );
+    };
+
+    const handleSubmit = (e) => {
         e.preventDefault();
-
-        const hasDuplicate = serialNumbers.some((sn, i) => serialNumbers.indexOf(sn) !== i);
-
-        if (hasDuplicate) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Duplikat Serial Number',
-                text: 'Terdapat serial number yang sama. Mohon periksa kembali.',
-            });
-            return;
-        }
-
-        post('/barang-keluar', {
+        post(route('barang-keluar.store'), {
             onSuccess: () => {
                 Swal.fire({
                     icon: 'success',
                     title: 'Berhasil',
-                    text: 'Barang keluar berhasil disimpan!',
+                    text: 'Data barang keluar berhasil disimpan!',
                     timer: 2000,
                     showConfirmButton: false,
                 });
-
-                // reset form
                 reset();
-                setSerialNumbers(['']);
-                setStatusKeluarList(['dipinjamkan']);
             },
-            onError: (err) => {
-                if (err.serial_numbers) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: err.serial_numbers[0],
-                    });
-                } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Gagal',
-                        text: 'Terjadi kesalahan saat menyimpan data.',
-                    });
-                }
+            onError: () => {
+                Swal.fire({ icon: 'error', title: 'Gagal', text: 'Periksa kembali isian form Anda.' });
             },
         });
     };
 
-    useEffect(() => {
-        console.log('FLASH:', flash);
-        if (flash?.barang_keluar_id) {
-            setBarangKeluarId(flash.barang_keluar_id);
-            setShowModal(true);
-        }
-    }, [flash]);
-
-    const isDuplicateSerial = (value: string, index: number) => {
-        return serialNumbers.some((sn, i) => sn === value && i !== index);
-    };
-
-    // Ambil kategori_id dari nama kategori yang dipilih
-    const selectedKategori = kategoriList.find((k) => k.nama === data.kategori);
-    const selectedKategoriId = selectedKategori?.id;
-
-    // Filter merek berdasarkan kategori
-    const filteredMerekList = merekList.filter((merek) => merek.model_barang.some((model: any) => model.jenis?.kategori_id === selectedKategoriId));
-
-    // Ambil merek_id dari nama merek yang dipilih
-    const selectedMerek = merekList.find((m) => m.nama === data.merek);
-    const selectedMerekId = selectedMerek?.id;
-
-    // Filter model berdasarkan kategori dan merek
-    const filteredModelList = modelList.filter((model) => model.merek_id === selectedMerekId && model.jenis?.kategori_id === selectedKategoriId);
-
     return (
         <AppLayout>
-            <div className="rounded-lg bg-white p-6 shadow-md">
-                <h1 className="mb-6 text-2xl font-bold text-gray-700">Tambah Barang Keluar</h1>
-
-                <form onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-2">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Tanggal</label>
-                        <input
-                            type="date"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.tanggal}
-                            onChange={(e) => setData('tanggal', e.target.value)}
-                        />
-                        {errors.tanggal && <p className="text-sm text-red-500">{errors.tanggal}</p>}
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Kategori</label>
-                        <input
-                            type="text"
-                            list="kategori-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.kategori}
-                            onChange={(e) => setData('kategori', e.target.value)}
-                        />
-                        <datalist id="kategori-suggest">
-                            {kategoriOptions.map((k) => (
-                                <option key={k} value={k} />
-                            ))}
-                        </datalist>
-                        {errors.kategori && <p className="text-sm text-red-500">{errors.kategori}</p>}
-                    </div>
-
-                    {/* Merek */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Merek</label>
-                        <input
-                            type="text"
-                            list="merek-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.merek}
-                            onChange={(e) => setData('merek', e.target.value)}
-                        />
-                        <datalist id="merek-suggest">
-                            {filteredMerekList.map((merek) => (
-                                <option key={merek.id} value={merek.nama} />
-                            ))}
-                        </datalist>
-                        {errors.merek && <p className="text-sm text-red-500">{errors.merek}</p>}
-                    </div>
-
-                    {/* Model */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Model</label>
-                        <input
-                            type="text"
-                            list="model-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.model}
-                            onChange={(e) => setData('model', e.target.value)}
-                        />
-                        <datalist id="model-suggest">
-                            {filteredModelList.map((model) => (
-                                <option key={model.id} value={model.nama} />
-                            ))}
-                        </datalist>
-                        {errors.model && <p className="text-sm text-red-500">{errors.model}</p>}
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Tujuan Distribusi</label>
-                        <input
-                            type="text"
-                            list="lokasi-suggest"
-                            className="mt-1 w-full rounded border p-2"
-                            value={data.lokasi}
-                            onChange={(e) => setData('lokasi', e.target.value)}
-                        />
-                        <datalist id="lokasi-suggest">
-                            {lokasiOptions.map((l) => (
-                                <option key={l} value={l} />
-                            ))}
-                        </datalist>
-                        {errors.lokasi && <p className="text-sm text-red-500">{errors.lokasi}</p>}
-                    </div>
-
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-semibold text-red-700">
-                            Serial Number <span className="text-xs text-red-400">(wajib)</span>
-                        </label>
-
-                        {serialNumbers.map((serial, index) => (
-                            <div key={index} className="mb-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        className="flex-1 rounded border-2 border-red-400 bg-red-50 p-2"
-                                        value={serial}
-                                        onChange={(e) => handleSerialChange(e.target.value, index)}
-                                        placeholder={`Serial #${index + 1}`}
-                                        list={`serialNumberSuggestions-${index}`}
-                                    />
-                                    {(!data.merek || !data.model) && (
-                                        <p className="text-xs text-yellow-600 italic">
-                                            Pilih merek dan model terlebih dahulu untuk menampilkan serial number.
-                                        </p>
-                                    )}
-                                    <datalist id={`serialNumberSuggestions-${index}`}>
-                                        {filteredSerialSuggestions.map((sn) => (
-                                            <option key={sn} value={sn} />
-                                        ))}
-                                    </datalist>
-                                    {serialNumbers.length > 1 && (
-                                        <button
-                                            type="button"
-                                            className="text-sm text-red-600 hover:underline"
-                                            onClick={() => removeSerialField(index)}
-                                        >
-                                            Hapus
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <select
-                                        value={statusKeluarList[index] ?? 'dipinjamkan'}
-                                        onChange={(e) => handleStatusChange(e.target.value, index)}
-                                        className="w-full rounded border-2 border-blue-400 bg-blue-50 p-2"
-                                    >
-                                        <option value="dipinjamkan">Dipinjamkan</option>
-                                        <option value="dijual">Dijual</option>
-                                    </select>
-                                </div>
-                            </div>
-                        ))}
-
-                        <button type="button" className="mt-1 text-sm text-blue-600 hover:underline" onClick={addSerialField}>
-                            + Tambah Serial
-                        </button>
-
-                        {errors.serial_numbers && <p className="text-sm text-red-500">{errors.serial_numbers}</p>}
-                    </div>
-
-                    <div className="flex gap-4 pt-4 md:col-span-2">
-                        <button
-                            type="submit"
-                            disabled={processing}
-                            className="rounded bg-blue-600 px-6 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-                        >
-                            Simpan Barang Keluar
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => router.get('/barang-keluar')}
-                            className="rounded bg-gray-400 px-6 py-2 text-white hover:bg-gray-500"
-                        >
-                            Kembali
-                        </button>
-                    </div>
-                </form>
-                {showModal && barangKeluarId && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center">
-                        <div className="w-[90%] max-w-sm rounded-lg bg-white p-6 text-center shadow-lg">
-                            <h2 className="mb-4 text-lg font-semibold text-gray-700">Barang berhasil disimpan</h2>
-                            <p className="mb-6 text-sm text-gray-600">Apakah Anda ingin mencetak label sekarang?</p>
-                            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                                <button
-                                    onClick={() => window.open(route('barang-keluar.cetak-label', barangKeluarId), '_blank')}
-                                    className="w-full rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 sm:w-auto"
-                                >
-                                    Cetak Label
-                                </button>
-
-                                <button
-                                    onClick={() => window.open(route('barang-keluar.cetak-surat', barangKeluarId), '_blank')}
-                                    className="w-full rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 sm:w-auto"
-                                >
-                                    Cetak Surat
-                                </button>
-
-                                <button
-                                    onClick={() => {
-                                        setShowModal(false);
-                                        router.get('/barang-keluar');
-                                    }}
-                                    className="w-full rounded bg-gray-400 px-4 py-2 text-white hover:bg-gray-500 sm:w-auto"
-                                >
-                                    Tutup
-                                </button>
-                            </div>
+            <div className="container mx-auto p-4">
+                <h1 className="mb-4 text-2xl font-bold">Buat Transaksi Barang Keluar</h1>
+                <form onSubmit={handleSubmit} className="rounded-lg bg-white p-6 shadow-md">
+                    {/* Header Form */}
+                    <div className="mb-6 grid grid-cols-1 gap-6 border-b pb-6 md:grid-cols-2">
+                        <div>
+                            <label>Tanggal</label>
+                            <input
+                                type="date"
+                                className="mt-1 w-full rounded border p-2"
+                                value={data.tanggal}
+                                onChange={(e) => setData('tanggal', e.target.value)}
+                            />
+                            {errors.tanggal && <p className="text-sm text-red-500">{errors.tanggal}</p>}
+                        </div>
+                        <div>
+                            <label>Tujuan Distribusi</label>
+                            <input
+                                type="text"
+                                list="lokasi-suggest"
+                                className="mt-1 w-full rounded border p-2"
+                                value={data.lokasi}
+                                onChange={(e) => setData('lokasi', e.target.value)}
+                            />
+                            <datalist id="lokasi-suggest">
+                                {lokasiList.map((l) => (
+                                    <option key={l.id} value={l.nama} />
+                                ))}
+                            </datalist>
+                            {errors.lokasi && <p className="text-sm text-red-500">{errors.lokasi}</p>}
                         </div>
                     </div>
-                )}
+
+                    {/* Daftar Item */}
+                    {data.items.map((item, index) => (
+                        <ItemRow
+                            key={index}
+                            item={item}
+                            index={index}
+                            onItemChange={handleItemChange}
+                            onRemove={data.items.length > 1 ? () => removeItemRow(index) : undefined}
+                            errors={errors}
+                            lists={{ kategoriList, merekList, modelList, serialNumberList }}
+                        />
+                    ))}
+
+                    {/* Tombol Aksi */}
+                    <div className="mt-6 flex items-center justify-between">
+                        <button type="button" onClick={addItemRow} className="rounded bg-green-500 px-4 py-2 text-white hover:bg-green-600">
+                            + Tambah Item
+                        </button>
+                        <div className="flex space-x-4">
+                            <Link href={route('barang-keluar.index')} className="rounded bg-gray-500 px-6 py-2 text-white hover:bg-gray-600">
+                                Kembali
+                            </Link>
+                            <button
+                                type="submit"
+                                disabled={processing}
+                                className="rounded bg-blue-600 px-6 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                Simpan Transaksi
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
         </AppLayout>
     );

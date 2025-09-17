@@ -203,7 +203,7 @@ class BarangMasukController extends Controller
         DB::transaction(function () use ($request) {
             $asal = null;
             if ($request->filled('asal_barang')) {
-                $asal = AsalBarang::firtOrCreate(['nama' => $request->asal_barang]);
+                $asal = AsalBarang::firstOrCreate(['nama' => $request->asal_barang]);
             }
 
             $barangMasuk = BarangMasuk::create([
@@ -402,6 +402,7 @@ class BarangMasukController extends Controller
 
     public function show(Request $request, BarangMasuk $barang_masuk)
     {
+        // 1. Eager load relasi seperti biasa
         $barang_masuk->load([
             'asal',
             'user',
@@ -409,14 +410,38 @@ class BarangMasukController extends Controller
             'details.barang.modelBarang.merek',
         ]);
 
+        // 2. Kelompokkan detail berdasarkan model barangnya
+        $groupedDetails = $barang_masuk->details->groupBy('barang.model_id');
+
+        // 3. Transformasi data menjadi struktur yang rapi untuk frontend
+        $items = $groupedDetails->map(function ($details) {
+            // Ambil data master dari item pertama di grup (karena semuanya sama)
+            $modelBarang = $details->first()->barang->modelBarang;
+
+            return [
+                'kategori' => $modelBarang->kategori->nama,
+                'merek' => $modelBarang->merek->nama,
+                'model' => $modelBarang->nama,
+                'serial_numbers' => $details->pluck('barang.serial_number')->all(),
+            ];
+        });
+
+        // 4. Siapkan data final yang akan dikirim
+        $data = [
+            'id' => $barang_masuk->id,
+            'tanggal' => $barang_masuk->tanggal,
+            'asal' => $barang_masuk->asal,
+            'user' => $barang_masuk->user,
+            'items' => $items->values()->all(), // Gunakan values() untuk reset keys array
+        ];
+
         if ($request->wantsJson()) {
-            return response()->json([
-                'barangMasuk' => $barang_masuk
-            ]);
+            return response()->json(['barangMasuk' => $data]);
         }
 
+        // Kirim data yang sudah ditransformasi ke view
         return Inertia::render('transaksi/barang-masuk/barang-masuk-detail', [
-            'barangMasuk' => $barang_masuk
+            'barangMasuk' => $data
         ]);
     }
 

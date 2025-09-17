@@ -232,7 +232,12 @@ export default function BarangKembaliIndex() {
                                                             <EyeIcon className="h-3 w-3" />
                                                             Detail
                                                         </button>
-                                                        {/* Tambahkan tombol aksi lain jika perlu */}
+                                                        <button
+                                                            onClick={() => handleEdit(transaksi.id)}
+                                                            className="flex items-center gap-1 text-yellow-600 hover:text-yellow-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        >
+                                                            Edit
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>

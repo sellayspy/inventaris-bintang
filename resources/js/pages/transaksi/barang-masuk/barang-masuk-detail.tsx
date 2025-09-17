@@ -17,21 +17,14 @@ export default function DetailBarangMasukModal({ show, onClose, barang }) {
                 {/* Body Modal */}
                 <div className="mt-4 space-y-4">
                     {/* Info Utama */}
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                         <div>
                             <p className="font-semibold text-gray-700">Tanggal Masuk</p>
                             <p className="text-gray-600">{barang?.tanggal || '-'}</p>
                         </div>
                         <div>
                             <p className="font-semibold text-gray-700">Asal Barang</p>
-                            <p className="text-gray-600">{barang?.asal?.nama || '-'}</p>
-                        </div>
-                        <div>
-                            <p className="font-semibold text-gray-700">Merek & Model</p>
-                            <p className="text-gray-600">
-                                {`${barang?.details[0]?.barang.model_barang.merek.nama || ''} ${barang?.details[0]?.barang.model_barang.nama || ''}`.trim() ||
-                                    '-'}
-                            </p>
+                            <p className="text-gray-600">{barang?.asal?.nama || 'Manual'}</p>
                         </div>
                         <div>
                             <p className="font-semibold text-gray-700">Diinput Oleh</p>
@@ -39,17 +32,48 @@ export default function DetailBarangMasukModal({ show, onClose, barang }) {
                         </div>
                     </div>
 
-                    {/* Daftar Serial Number */}
+                    {/* Daftar Item & Serial Number (Tampilan Baru) */}
                     <div>
-                        <p className="text-sm font-semibold text-gray-700">Daftar Item & Serial Number</p>
-                        <div className="mt-2 max-h-48 overflow-y-auto rounded-md border">
-                            <ul className="divide-y divide-gray-200">
-                                {barang?.details?.map((detail, index) => (
-                                    <li key={detail.id} className="px-3 py-2 text-sm text-gray-800">
-                                        {index + 1}. SN: <span className="rounded bg-gray-100 px-1 font-mono">{detail.barang.serial_number}</span>
-                                    </li>
-                                )) || <li>Tidak ada detail item.</li>}
-                            </ul>
+                        <p className="mt-2 text-sm font-semibold text-gray-700">Daftar Item & Serial Number</p>
+                        <div className="mt-2 max-h-64 overflow-y-auto rounded-md border">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                                            Model Barang
+                                        </th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                                            Serial Number
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200 bg-white">
+                                    {barang?.items?.map((item, index) => (
+                                        <tr key={index}>
+                                            <td className="px-4 py-3 align-top text-sm font-medium text-gray-900">
+                                                {item.merek} {item.model}
+                                                <span className="block text-xs font-normal text-gray-500">{item.kategori}</span>
+                                            </td>
+                                            <td className="px-4 py-3 align-top text-sm text-gray-500">
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                                    {item.serial_numbers.map((sn) => (
+                                                        <span key={sn} className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs">
+                                                            {sn}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {(!barang?.items || barang.items.length === 0) && (
+                                        <tr>
+                                            <td colSpan={2} className="px-4 py-3 text-center text-sm text-gray-500">
+                                                Tidak ada detail item.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>

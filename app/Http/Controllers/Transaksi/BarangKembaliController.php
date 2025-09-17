@@ -179,116 +179,146 @@ class BarangKembaliController extends Controller
 
     public function store(Request $request)
     {
+        // Validasi lengkap untuk payload multi-item
         $request->validate([
             'tanggal' => 'required|date',
-            'lokasi' => 'required|string|max:100',
-            'kategori' => 'required|string|max:100',
-            'merek' => 'required|string|max:100',
-            'model' => 'required|string|max:100',
-            'serial_numbers' => 'required|array|min:1',
-            'serial_numbers.*' => 'required|string|distinct|exists:barang,serial_number',
-            'kondisi_map' => 'required|array',
+            'lokasi' => 'required|string|max:100|exists:lokasi,nama',
+            'items' => 'required|array|min:1',
+            'items.*.kategori' => 'required|string',
+            'items.*.merek' => 'required|string',
+            'items.*.model' => 'required|string',
+            'items.*.kembali_info' => 'required|array|min:1',
+            'items.*.kembali_info.*.serial_number' => 'required|string|distinct|exists:barang,serial_number',
+            'items.*.kembali_info.*.kondisi' => 'required|string|in:bagus,rusak,diperbaiki',
         ]);
 
         DB::transaction(function () use ($request) {
-            $lokasiDistribusi = Lokasi::firstOrCreate(['nama' => $request->lokasi]);
-
+            $lokasiDistribusi = Lokasi::where('nama', $request->lokasi)->firstOrFail();
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
 
+            // Buat satu header transaksi
             $barangKembali = BarangKembali::create([
                 'tanggal' => $request->tanggal,
-                'lokasi_id' => $lokasiDistribusi->id,
+                'lokasi_id' => $lokasiDistribusi->id, // Lokasi asal barang
                 'user_id' => auth()->id(),
             ]);
 
-            foreach ($request->serial_numbers as $serial) {
-                $barang = Barang::where('serial_number', $serial)->firstOrFail();
+            // Loop untuk setiap jenis model barang
+            foreach ($request->items as $item) {
+                // Loop untuk setiap serial number di dalamnya
+                foreach ($item['kembali_info'] as $info) {
+                    $serial = $info['serial_number'];
+                    $kondisi = $info['kondisi'];
 
-                // Validasi jika barang belum keluar
-                if ($barang->lokasi_id === $lokasiGudang->id) {
-                    throw ValidationException::withMessages([
-                        'serial_numbers' => "Barang dengan serial {$serial} belum keluar dari gudang.",
+                    $barang = Barang::where('serial_number', $serial)->firstOrFail();
+
+                    // Pastikan barang memang sedang berada di lokasi tersebut
+                    if ($barang->lokasi_id !== $lokasiDistribusi->id) {
+                        throw ValidationException::withMessages([
+                            'items' => "Barang dengan SN:{$serial} tidak berada di lokasi {$request->lokasi}.",
+                        ]);
+                    }
+
+                    // Update kondisi & pindahkan lokasi barang ke gudang
+                    $barang->update([
+                        'status' => $kondisi,
+                        'kondisi_awal' => 'second',
+                        'lokasi_id' => $lokasiGudang->id,
+                    ]);
+
+                    // Buat detail transaksi
+                    BarangKembaliDetail::create([
+                        'barang_kembali_id' => $barangKembali->id,
+                        'barang_id' => $barang->id,
+                        'status_saat_kembali' => $kondisi,
+                    ]);
+
+                    // Perbarui stok: tambah di gudang, kurangi di distribusi
+                    StockHelpers::kembalikanStok($barang->model_id, $lokasiGudang->id, $kondisi);
+                    StockHelpers::kurangiStokDistribusi($barang->model_id, $lokasiDistribusi->id, 1);
+
+                    // Catat mutasi barang
+                    MutasiBarang::create([
+                        'barang_id' => $barang->id,
+                        'lokasi_asal_id' => $lokasiDistribusi->id,
+                        'lokasi_tujuan_id' => $lokasiGudang->id,
+                        'tanggal' => $request->tanggal,
+                        'keterangan' => "Barang kembali dari {$lokasiDistribusi->nama} (Kondisi: {$kondisi})",
                     ]);
                 }
-
-                $status = $request->kondisi_map[$serial] ?? 'bagus';
-                $kondisiAwal = 'second';
-
-                // Update kondisi & lokasi
-                $barang->update([
-                    'status' => $status,
-                    'kondisi_awal' => $kondisiAwal,
-                    'lokasi_id' => $lokasiGudang->id,
-                ]);
-
-                // Catat kondisi saat kembali ke detail
-                BarangKembaliDetail::create([
-                    'barang_kembali_id' => $barangKembali->id,
-                    'barang_id' => $barang->id,
-                    'status_saat_kembali' => $status,
-                    'kondisi_awal_saat_kembali' => $kondisiAwal,
-                ]);
-
-                // Update stok sesuai kondisi
-                StockHelpers::kembalikanStok($barang->model_id, $lokasiGudang->id, $status);
-
-                // Kurangi stok dari lokasi distribusi
-                StockHelpers::kurangiStokDistribusi($barang->model_id, $lokasiDistribusi->id, 1);
-
-                MutasiBarang::create([
-                    'barang_id' => $barang->id,
-                    'lokasi_asal_id' => $lokasiDistribusi->id,
-                    'lokasi_tujuan_id' => $lokasiGudang->id,
-                    'tanggal' => $request->tanggal,
-                    'keterangan' => "Barang kembali dengan status: {$status}",
-                ]);
             }
         });
 
-        return redirect()->route('barang-kembali.index')->with('success', 'Barang berhasil dikembalikan.');
+        return redirect()->route('barang-kembali.index')->with('success', 'Transaksi barang kembali berhasil dicatat.');
     }
 
     public function edit(BarangKembali $barangKembali)
     {
-        // Eager load relasi yang diperlukan
-        $barangKembali->load('details.barang.modelBarang.merek', 'details.barang.modelBarang.kategori', 'lokasi');
+        // 1. Eager load semua relasi yang dibutuhkan
+        $barangKembali->load('details.barang.modelBarang.kategori', 'details.barang.modelBarang.merek', 'lokasi');
 
         if ($barangKembali->details->isEmpty()) {
-            return redirect()->route('barang-kembali.index')->with('error', 'Transaksi ini tidak memiliki detail barang.');
+            return redirect()->route('barang-kembali.index')->with('error', 'Transaksi tidak memiliki detail.');
         }
 
-        // Ambil referensi dari barang pertama di dalam transaksi
-        $firstBarang = $barangKembali->details->first()->barang;
+        // 2. Kelompokkan detail berdasarkan model_id barangnya
+        $groupedDetails = $barangKembali->details->groupBy('barang.model_id');
 
-        // Menyiapkan data yang akan diedit
+        // 3. Transformasi data ke struktur 'items' yang baru
+        $items = $groupedDetails->map(function ($details) {
+            $modelBarang = $details->first()->barang->modelBarang;
+            $kembaliInfo = $details->map(function ($detail) {
+                return [
+                    'serial_number' => $detail->barang->serial_number,
+                    'kondisi' => $detail->status_saat_kembali,
+                ];
+            });
+
+            return [
+                'kategori' => $modelBarang->kategori->nama,
+                'merek' => $modelBarang->merek->nama,
+                'model' => $modelBarang->nama,
+                'kembali_info' => $kembaliInfo->values()->all(),
+            ];
+        });
+
+        // 4. Siapkan data utama untuk form
         $dataToEdit = [
             'id' => $barangKembali->id,
             'tanggal' => $barangKembali->tanggal,
             'lokasi' => $barangKembali->lokasi->nama,
-            // Tambahkan data ini untuk mengisi form
-            'kategori' => $firstBarang->modelBarang->kategori->nama,
-            'merek' => $firstBarang->modelBarang->merek->nama,
-            'model' => $firstBarang->modelBarang->nama,
-            // ---
-            'serial_numbers' => $barangKembali->details->pluck('barang.serial_number')->all(),
-            'kondisi_map' => $barangKembali->details->pluck('status_saat_kembali', 'barang.serial_number')->all(),
+            'items' => $items->values()->all(),
         ];
 
-        // Ambil daftar lokasi seperti di fungsi create
+        // 5. Ambil SEMUA LIST yang dibutuhkan oleh form (bagian yang sebelumnya terlewat)
         $lokasiDenganStok = RekapStokBarang::where('jumlah_tersedia', '>', 0)->pluck('lokasi_id')->unique();
-        $lokasiList = Lokasi::where('is_gudang', false)->whereIn('id', $lokasiDenganStok)->get();
+        $lokasiList = Lokasi::where('is_gudang', false)->whereIn('id', $lokasiDenganStok)->get(['id', 'nama']);
 
-        // Kirim juga semua list yang dibutuhkan untuk filter, sama seperti di 'create'
-        $kategoriList = KategoriBarang::all();
-        $merekList = MerekBarang::select('id', 'nama')->distinct()->get();
-        $modelList = ModelBarang::select('id', 'nama')->distinct()->get();
+        $kategoriList = KategoriBarang::all(['id', 'nama']);
+        $merekList = MerekBarang::with('modelBarang.jenis')->get(); // Mengambil relasi untuk filter di frontend
+        $modelList = ModelBarang::with('jenis')->get();
 
+        // Ambil daftar serial number yang sedang keluar (untuk suggestion di form)
+        $barangDiLuar = Barang::with('modelBarang.merek')
+            ->whereHas('lokasi', function ($query) {
+                $query->where('is_gudang', false);
+            })
+            ->get();
+
+        $serialNumberList = $barangDiLuar->groupBy(function ($item) {
+            $merek = $item->modelBarang->merek->nama ?? 'Tanpa Merek';
+            $model = $item->modelBarang->nama ?? 'Tanpa Model';
+            return $merek . '|' . $model;
+        })->map(fn($group) => $group->pluck('serial_number')->filter()->values());
+
+        // 6. Kirim semua data ke view
         return Inertia::render('transaksi/barang-kembali/BarangKembaliEdit', [
             'barangKembali' => $dataToEdit,
             'lokasiList' => $lokasiList,
-            'kategoriList' => $kategoriList, // Kirim list ini
-            'merekList' => $merekList,       // Kirim list ini
-            'modelList' => $modelList,       // Kirim list ini
+            'serialNumberList' => $serialNumberList,
+            'kategoriList' => $kategoriList,
+            'merekList' => $merekList,
+            'modelList' => $modelList,
         ]);
     }
 
@@ -296,103 +326,83 @@ class BarangKembaliController extends Controller
     {
         $request->validate([
             'tanggal' => 'required|date',
-            'lokasi' => 'required|string|max:100',
-            'serial_numbers' => 'required|array|min:1',
-            'serial_numbers.*' => 'required|string|distinct|exists:barang,serial_number',
-            'kondisi_map' => 'required|array',
-            'kondisi_map.*' => 'required|string|in:bagus,rusak,diperbaiki',
+            'lokasi' => 'required|string|max:100|exists:lokasi,nama',
+            'items' => 'required|array|min:1',
+            'items.*.kategori' => 'required|string',
+            'items.*.merek' => 'required|string',
+            'items.*.model' => 'required|string',
+            'items.*.kembali_info' => 'required|array|min:1',
+            'items.*.kembali_info.*.serial_number' => 'required|string|distinct|exists:barang,serial_number',
+            'items.*.kembali_info.*.kondisi' => 'required|string|in:bagus,rusak,diperbaiki',
         ]);
 
         DB::transaction(function () use ($request, $barangKembali) {
             $lokasiDistribusi = Lokasi::where('nama', $request->lokasi)->firstOrFail();
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
 
-            // Update data utama jika ada perubahan
-            $barangKembali->update(['tanggal' => $request->tanggal]);
+            // Update header transaksi
+            $barangKembali->update([
+                'tanggal' => $request->tanggal,
+                'lokasi_id' => $lokasiDistribusi->id,
+            ]);
 
             $oldDetails = $barangKembali->details()->with('barang')->get();
             $oldSerials = $oldDetails->pluck('barang.serial_number')->all();
-            $newSerials = $request->serial_numbers;
-            $kondisiMap = $request->kondisi_map;
 
-            //
-            // 1) Barang yang DIBATALKAN KEMBALI (dihapus dari form)
-            //
+            // Ekstrak data dari payload baru yang nested
+            $newItemsCollection = collect($request->items)->pluck('kembali_info')->flatten(1);
+            $newSerials = $newItemsCollection->pluck('serial_number')->all();
+            $newKondisiMap = $newItemsCollection->pluck('kondisi', 'serial_number')->all();
+
+            // 1. Barang yang DIBATALKAN KEMBALI (dihapus dari form edit)
             $serialsToUndo = array_diff($oldSerials, $newSerials);
             foreach ($serialsToUndo as $serial) {
                 $detail = $oldDetails->firstWhere('barang.serial_number', $serial);
                 if (!$detail) continue;
 
                 $barang = $detail->barang;
-                $oldKondisi = $detail->status_saat_kembali;
 
-                // Reverse: kurangi stok gudang sesuai kondisi yang sebelumnya dicatat
-                StockHelpers::kurangiStokKembali($barang->model_id, $lokasiGudang->id, $oldKondisi);
-
-                // Kembalikan ke lokasi distribusi (tambah jumlah tersedia di distribusi)
+                // Reverse stok gudang (kurangi stok di gudang)
+                StockHelpers::kurangiStokKembali($barang->model_id, $lokasiGudang->id, $detail->status_saat_kembali);
+                // Kembalikan ke stok distribusi (tambah stok di distribusi)
                 StockHelpers::distribusiMasuk($barang->model_id, $lokasiDistribusi->id, 1);
 
-                // Update lokasi & status barang ke kondisi semula (dipinjamkan)
+                // Kembalikan status & lokasi barang ke kondisi 'dipinjamkan' di lokasi distribusi
                 $barang->update(['lokasi_id' => $lokasiDistribusi->id, 'status' => 'dipinjamkan']);
 
-                // Catat mutasi: dari GUDANG --> DISTRIBUSI (pembatalan pengembalian)
-                MutasiBarang::create([
-                    'barang_id' => $barang->id,
-                    'lokasi_asal_id' => $lokasiGudang->id,
-                    'lokasi_tujuan_id' => $lokasiDistribusi->id,
-                    'tanggal' => $request->tanggal,
-                    'keterangan' => "Pembatalan pengembalian — kembali ke distribusi. Kondisi sebelumnya: {$oldKondisi}",
-                ]);
-
-                // Hapus detail transaksi kembali
                 $detail->delete();
             }
 
-            //
-            // 2) Barang BARU atau yang KONDISINYA BERUBAH
-            //
+            // 2. Barang BARU atau yang KONDISINYA BERUBAH
             foreach ($newSerials as $serial) {
-                $barang = Barang::where('serial_number', $serial)->firstOrFail();
-                $kondisi = $kondisiMap[$serial] ?? 'bagus';
+                $kondisi = $newKondisiMap[$serial];
                 $detail = $oldDetails->firstWhere('barang.serial_number', $serial);
 
                 if ($detail) {
-                    // Barang sudah ada di detail, cek perubahan kondisi
+                    // Barang sudah ada, cek perubahan kondisi
                     if ($detail->status_saat_kembali !== $kondisi) {
-                        // Reverse stok kondisi lama di gudang
+                        $barang = $detail->barang;
+                        // Reverse stok kondisi LAMA, lalu tambah stok kondisi BARU
                         StockHelpers::kurangiStokKembali($barang->model_id, $lokasiGudang->id, $detail->status_saat_kembali);
-
-                        // Tambah stok kondisi baru di gudang
                         StockHelpers::kembalikanStok($barang->model_id, $lokasiGudang->id, $kondisi);
 
-                        // Update detail & barang
+                        // Update detail dan status barang
                         $detail->update(['status_saat_kembali' => $kondisi]);
                         $barang->update(['status' => $kondisi]);
-
-                        MutasiBarang::create([
-                            'barang_id' => $barang->id,
-                            'lokasi_asal_id' => $lokasiGudang->id,
-                            'lokasi_tujuan_id' => $lokasiGudang->id,
-                            'tanggal' => $request->tanggal,
-                            'keterangan' => "Perubahan kondisi pada transaksi kembali: {$kondisi}",
-                        ]);
                     }
                 } else {
                     // Barang baru ditambahkan ke transaksi kembali
-                    // simpan kondisi awal sebelum diproses
-                    $kondisiAwal = $barang->status;
+                    $barang = Barang::where('serial_number', $serial)->firstOrFail();
 
-                    // Pindah barang ke gudang dan set status sesuai kondisi yang dikembalikan
-                    $barang->update(['status' => $kondisi, 'lokasi_id' => $lokasiGudang->id]);
+                    // Proses seperti di fungsi store
+                    $barang->update(['status' => $kondisi, 'kondisi_awal' => 'second', 'lokasi_id' => $lokasiGudang->id]);
 
                     BarangKembaliDetail::create([
                         'barang_kembali_id' => $barangKembali->id,
                         'barang_id' => $barang->id,
                         'status_saat_kembali' => $kondisi,
-                        'kondisi_awal_saat_kembali' => $kondisiAwal,
                     ]);
 
-                    // Tambah stok gudang sesuai kondisi, kurangi stok di distribusi
                     StockHelpers::kembalikanStok($barang->model_id, $lokasiGudang->id, $kondisi);
                     StockHelpers::kurangiStokDistribusi($barang->model_id, $lokasiDistribusi->id, 1);
 
@@ -401,7 +411,7 @@ class BarangKembaliController extends Controller
                         'lokasi_asal_id' => $lokasiDistribusi->id,
                         'lokasi_tujuan_id' => $lokasiGudang->id,
                         'tanggal' => $request->tanggal,
-                        'keterangan' => "Barang kembali dengan kondisi: {$kondisi}",
+                        'keterangan' => "Barang kembali via update (Kondisi: {$kondisi})",
                     ]);
                 }
             }

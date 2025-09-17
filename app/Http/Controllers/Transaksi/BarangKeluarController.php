@@ -18,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 
@@ -137,142 +138,174 @@ class BarangKeluarController extends Controller
     {
         $request->validate([
             'tanggal' => 'required|date',
-            'kategori' => 'required|string|max:100',
-            'merek' => 'required|string|max:100',
-            'model' => 'required|string|max:100',
             'lokasi' => 'required|string|max:100',
-            'serial_numbers' => 'required|array|min:1',
-            'serial_numbers.*' => 'required|string|distinct|exists:barang,serial_number',
+            'items' => 'required|array|min:1',
+            // Validasi opsional untuk master data di setiap item
+            'items.*.kategori' => 'required|string',
+            'items.*.merek' => 'required|string',
+            'items.*.model' => 'required|string',
+            // Validasi untuk detail serial number
+            'items.*.keluar_info' => 'required|array|min:1',
+            'items.*.keluar_info.*.serial_number' => [
+                'required',
+                'string',
+                'distinct',
+                Rule::exists('barang', 'serial_number')->where(function ($query) {
+                    $gudangId = Lokasi::where('is_gudang', true)->value('id');
+                    $query->whereIn('status', ['baik', 'bagus'])->where('lokasi_id', $gudangId);
+                }),
+            ],
+            'items.*.keluar_info.*.status_keluar' => 'required|string|in:dipinjamkan,dijual,maintenance',
         ]);
 
         $barangKeluar = null;
 
         DB::transaction(function () use ($request, &$barangKeluar) {
-            $kategori = KategoriBarang::firstOrCreate(['nama' => $request->kategori]);
-            $merek = MerekBarang::firstOrCreate(['nama' => $request->merek]);
-            $model = ModelBarang::firstOrCreate([
-                'nama' => $request->model,
-                'kategori_id' => $kategori->id,
-                'merek_id' => $merek->id,
-            ]);
-            $jenis = JenisBarang::firstOrCreate(['kategori_id' => $kategori->id]);
-            $lokasi = Lokasi::firstOrCreate(['nama' => $request->lokasi]);
+            $lokasiTujuan = Lokasi::firstOrCreate(
+                ['nama' => $request->lokasi],
+                ['is_gudang' => false]
+            );
 
+            // 2. Buat satu header transaksi BarangKeluar
             $barangKeluar = BarangKeluar::create([
                 'tanggal' => $request->tanggal,
-                'lokasi_id' => $lokasi->id,
+                'lokasi_id' => $lokasiTujuan->id,
                 'user_id' => auth()->id(),
             ]);
 
-            $statusMap = $request->input('status_keluar', []);
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
 
-            foreach ($request->serial_numbers as $serial) {
-                $barang = Barang::where('serial_number', $serial)->firstOrFail();
-                $status = $statusMap[$serial] ?? 'dipinjamkan';
+            // 3. Looping untuk setiap JENIS BARANG (item)
+            foreach ($request->items as $item) {
 
-                $barang->update([
-                    'lokasi_id' => $lokasi->id,
-                    'status' => $status,
-                ]);
+                // 4. Looping untuk setiap SERIAL NUMBER di dalam jenis barang tsb
+                foreach ($item['keluar_info'] as $info) {
+                    $serial = $info['serial_number'];
+                    $status = $info['status_keluar'];
 
-                BarangKeluarDetail::create([
-                    'barang_keluar_id' => $barangKeluar->id,
-                    'barang_id' => $barang->id,
-                    'status_keluar' => $status,
-                ]);
+                    $barang = Barang::where('serial_number', $serial)->firstOrFail();
+                    $lokasiAsalId = $barang->lokasi_id;
 
-                if ($status === 'dijual') {
-                    StockHelpers::catatPenjualan($barang->model_id, $lokasiGudang->id, 1);
-                } elseif ($status === 'dipinjamkan') {
-                    StockHelpers::pindahkanStok($barang->model_id, $lokasiGudang->id, $lokasi->id, 1);
+                    // Update lokasi dan status barang
+                    $barang->update([
+                        'lokasi_id' => $lokasiTujuan->id,
+                        'status' => $status,
+                    ]);
+
+                    // Buat detail transaksi
+                    BarangKeluarDetail::create([
+                        'barang_keluar_id' => $barangKeluar->id,
+                        'barang_id' => $barang->id,
+                        'status_keluar' => $status,
+                    ]);
+
+                    // Update stok berdasarkan status
+                    if ($status === 'dijual') {
+                        StockHelpers::catatPenjualan($barang->model_id, $lokasiAsalId, 1);
+                    } elseif ($status === 'dipinjamkan') {
+                        StockHelpers::pindahkanStok($barang->model_id, $lokasiAsalId, $lokasiTujuan->id, 1);
+                    }
+
+                    // Catat mutasi barang
+                    MutasiBarang::create([
+                        'barang_id' => $barang->id,
+                        'lokasi_asal_id' => $lokasiAsalId,
+                        'lokasi_tujuan_id' => $lokasiTujuan->id,
+                        'tanggal' => $request->tanggal,
+                        'keterangan' => "Barang keluar ke {$lokasiTujuan->nama} (Status: {$status})",
+                    ]);
                 }
-
-                MutasiBarang::create([
-                    'barang_id' => $barang->id,
-                    'lokasi_asal_id' => $lokasiGudang->id,
-                    'lokasi_tujuan_id' => $lokasi->id,
-                    'tanggal' => $request->tanggal,
-                    'keterangan' => "Barang keluar dengan status: {$status}",
-                ]);
             }
         });
 
         return redirect()
-            ->back()
-            ->with([
-                'success' => 'Barang berhasil didistribusikan.',
-                'barang_keluar_id' => $barangKeluar?->id,
-            ]);
+            ->route('barang-keluar.index')
+            ->with('success', 'Transaksi barang keluar berhasil dicatat.');
     }
 
     public function edit(BarangKeluar $barangKeluar)
     {
-        $barangKeluar->load('details.barang.modelBarang.merek', 'details.barang.modelBarang.kategori', 'lokasi');
+        // 1. Eager load semua relasi yang dibutuhkan
+        $barangKeluar->load('details.barang.modelBarang.kategori', 'details.barang.modelBarang.merek', 'lokasi');
 
         if ($barangKeluar->details->isEmpty()) {
             return redirect()->route('barang-keluar.index')->with('error', 'Transaksi tidak memiliki detail barang.');
         }
 
-        $firstDetail = $barangKeluar->details->first()->barang;
-        $kategori = $firstDetail->modelBarang->kategori->nama;
-        $merek = $firstDetail->modelBarang->merek->nama;
-        $model = $firstDetail->modelBarang->nama;
+        // 2. Kelompokkan detail berdasarkan model_id barangnya
+        $groupedDetails = $barangKeluar->details->groupBy('barang.model_id');
 
+        // 3. Transformasi data ke struktur 'items' yang baru
+        $items = $groupedDetails->map(function ($details) {
+            // Ambil data master dari item pertama di grup (semua sama)
+            $firstDetail = $details->first();
+            $modelBarang = $firstDetail->barang->modelBarang;
+
+            // Buat array 'keluar_info' untuk setiap serial number di grup ini
+            $keluarInfo = $details->map(function ($detail) {
+                return [
+                    'serial_number' => $detail->barang->serial_number,
+                    'status_keluar' => $detail->status_keluar,
+                ];
+            });
+
+            return [
+                'kategori' => $modelBarang->kategori->nama,
+                'merek' => $modelBarang->merek->nama,
+                'model' => $modelBarang->nama,
+                'keluar_info' => $keluarInfo->values()->all(),
+            ];
+        });
+
+        // 4. Siapkan data final untuk dikirim ke view
         $dataToEdit = [
             'id' => $barangKeluar->id,
             'tanggal' => $barangKeluar->tanggal,
             'lokasi' => $barangKeluar->lokasi->nama,
-            'kategori' => $kategori,
-            'merek' => $merek,
-            'model' => $model,
-            'serial_numbers' => $barangKeluar->details->pluck('barang.serial_number')->all(),
-            'status_keluar' => $barangKeluar->details->pluck('status_keluar', 'barang.serial_number')->all(),
+            'items' => $items->values()->all(), // Kirim data dalam format baru
         ];
 
-        $modelIds = DB::table('rekap_stok_barang')
-            ->join('lokasi', 'rekap_stok_barang.lokasi_id', '=', 'lokasi.id')
-            ->where('rekap_stok_barang.jumlah_tersedia', '>', 0)
-            ->where('lokasi.is_gudang', true)
-            ->pluck('rekap_stok_barang.model_id');
-
+        // Logika untuk mendapatkan daftar SN yang tersedia (bisa tetap sama)
         $gudangLokasiIds = Lokasi::where('is_gudang', true)->pluck('id');
-        $availableBarang = Barang::with(['jenisBarang.kategori', 'modelBarang.merek'])
-                ->whereIn('model_id', $modelIds)
-                ->whereIn('lokasi_id', $gudangLokasiIds)
-                ->whereIn('status', ['baik', 'bagus'])
-                ->get();
+        $availableBarang = Barang::with(['modelBarang.merek', 'modelBarang.kategori'])
+            ->whereIn('lokasi_id', $gudangLokasiIds)
+            ->whereIn('status', ['baik', 'bagus'])
+            ->get();
 
         $serialNumberList = $availableBarang->groupBy(function ($item) {
-                $merek = $item->modelBarang->merek->nama ?? '-';
-                $model = $item->modelBarang->nama ?? '-';
-                return $merek . '|' . $model;
-            })
-            ->map(fn($group) => $group->pluck('serial_number')->filter()->values());
+            $merek = $item->modelBarang->merek->nama ?? 'Tanpa Merek';
+            $model = $item->modelBarang->nama ?? 'Tanpa Model';
+            return $merek . '|' . $model;
+        })->map(fn($group) => $group->pluck('serial_number')->filter()->values());
 
         return Inertia::render('transaksi/barang-keluar/barang-keluar-edit', [
             'barangKeluar' => $dataToEdit,
-            'lokasiList' => Lokasi::where('is_gudang', false)->get(),
+            'lokasiList' => Lokasi::where('is_gudang', false)->get(['id', 'nama']),
+            'serialNumberList' => $serialNumberList,
             'kategoriList' => KategoriBarang::all(),
             'merekList' => MerekBarang::with(['modelBarang.jenis'])->get(),
             'modelList' => ModelBarang::with(['merek', 'jenis.kategori'])->get(),
-            'serialNumberList' => $serialNumberList,
         ]);
     }
 
-
     public function update(Request $request, BarangKeluar $barangKeluar)
     {
+        // 1. Validasi LENGKAP untuk struktur data yang baru
         $request->validate([
             'tanggal' => 'required|date',
             'lokasi' => 'required|string|max:100',
-            'serial_numbers' => 'required|array|min:1',
-            'serial_numbers.*' => 'required|string|distinct|exists:barang,serial_number',
+            'items' => 'required|array|min:1',
+            'items.*.kategori' => 'required|string', // Validasi yang terlewat
+            'items.*.merek' => 'required|string',    // Validasi yang terlewat
+            'items.*.model' => 'required|string',    // Validasi yang terlewat
+            'items.*.keluar_info' => 'required|array|min:1',
+            'items.*.keluar_info.*.serial_number' => 'required|string|distinct|exists:barang,serial_number',
+            'items.*.keluar_info.*.status_keluar' => 'required|string|in:dipinjamkan,dijual,maintenance',
         ]);
 
         DB::transaction(function () use ($request, $barangKeluar) {
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
-            $lokasiTujuan = Lokasi::firstOrCreate(['nama' => $request->lokasi, 'is_gudang' => false]);
+            $lokasiTujuan = Lokasi::firstOrCreate(['nama' => $request->lokasi], ['is_gudang' => false]);
 
             $barangKeluar->update([
                 'tanggal' => $request->tanggal,
@@ -281,76 +314,67 @@ class BarangKeluarController extends Controller
 
             $oldDetails = $barangKeluar->details()->with('barang')->get();
             $oldSerials = $oldDetails->pluck('barang.serial_number')->all();
-            $newSerials = $request->serial_numbers;
-            $statusMap = $request->input('status_keluar', []);
 
+            $newItemsCollection = collect($request->items)->pluck('keluar_info')->flatten(1);
+            $newSerials = $newItemsCollection->pluck('serial_number')->all();
+            $newStatusMap = $newItemsCollection->pluck('status_keluar', 'serial_number')->all();
+
+            // BAGIAN 1: Mengembalikan barang yang dihapus dari transaksi
             $serialsToReturn = array_diff($oldSerials, $newSerials);
             foreach ($serialsToReturn as $serial) {
                 $detail = $oldDetails->firstWhere('barang.serial_number', $serial);
                 if (!$detail) continue;
 
                 $barang = $detail->barang;
-                $lokasiAsal = $barang->lokasi_id;
+                $lokasiAsalBarangSaatKeluar = $barang->lokasi_id;
 
+                // Balikkan stok ke gudang
                 if ($detail->status_keluar === 'dijual') {
                     StockHelpers::batalJual($barang->model_id, $lokasiGudang->id, 1);
                 } elseif ($detail->status_keluar === 'dipinjamkan') {
-                    StockHelpers::pindahkanStok($barang->model_id, $lokasiAsal, $lokasiGudang->id, 1);
+                    StockHelpers::pindahkanStok($barang->model_id, $lokasiAsalBarangSaatKeluar, $lokasiGudang->id, 1);
                 }
 
                 $barang->update(['lokasi_id' => $lokasiGudang->id, 'status' => 'baik']);
-
-                MutasiBarang::create([
-                    'barang_id' => $barang->id,
-                    'lokasi_asal_id' => $lokasiAsal,
-                    'lokasi_tujuan_id' => $lokasiGudang->id,
-                    'tanggal' => now(),
-                    'keterangan' => 'Dikembalikan dari transaksi keluar #' . $barangKeluar->id,
-                ]);
-
                 $detail->delete();
             }
 
+            // BAGIAN 2: Memproses barang baru atau yang statusnya berubah
             foreach ($newSerials as $serial) {
-                $status = $statusMap[$serial] ?? 'dipinjamkan';
+                $status = $newStatusMap[$serial];
                 $detail = $oldDetails->firstWhere('barang.serial_number', $serial);
 
                 if ($detail) {
-                    // Barang ini sudah ada, cek apakah statusnya berubah
+                    // BARANG SUDAH ADA, cek apakah statusnya berubah
                     if ($detail->status_keluar !== $status) {
                         $barang = $detail->barang;
-                        $lokasiAsal = $barang->lokasi_id;
+                        $lokasiAsalBarangSaatKeluar = $barang->lokasi_id;
 
-                        // Balikkan stok lama sesuai status sebelumnya
+                        // Langkah A: Balikkan stok lama sesuai status SEBELUMNYA
                         if ($detail->status_keluar === 'dijual') {
                             StockHelpers::batalJual($barang->model_id, $lokasiGudang->id, 1);
                         } elseif ($detail->status_keluar === 'dipinjamkan') {
-                            StockHelpers::pindahkanStok($barang->model_id, $lokasiAsal, $lokasiGudang->id, 1);
+                            // Kembalikan dulu stoknya ke gudang
+                            StockHelpers::pindahkanStok($barang->model_id, $lokasiAsalBarangSaatKeluar, $lokasiGudang->id, 1);
                         }
 
-                        // Terapkan stok baru sesuai status baru
+                        // Langkah B: Terapkan stok baru sesuai status BARU
                         if ($status === 'dijual') {
                             StockHelpers::catatPenjualan($barang->model_id, $lokasiGudang->id, 1);
                         } elseif ($status === 'dipinjamkan') {
+                            // Pindahkan stok dari gudang ke tujuan
                             StockHelpers::pindahkanStok($barang->model_id, $lokasiGudang->id, $lokasiTujuan->id, 1);
                         }
 
-                        // Update detail & barang
+                        // Langkah C: Update record
                         $detail->update(['status_keluar' => $status]);
                         $barang->update(['status' => $status, 'lokasi_id' => $lokasiTujuan->id]);
-
-                        // Catat mutasi perubahan status
-                        MutasiBarang::create([
-                            'barang_id' => $barang->id,
-                            'lokasi_asal_id' => $lokasiGudang->id,
-                            'lokasi_tujuan_id' => $lokasiTujuan->id,
-                            'tanggal' => $request->tanggal,
-                            'keterangan' => "Perubahan status barang menjadi: {$status} (update transaksi)",
-                        ]);
                     }
                 } else {
-                    // Ini barang BARU yang ditambahkan ke transaksi
+                    // INI BARANG BARU yang ditambahkan ke transaksi
                     $barang = Barang::where('serial_number', $serial)->firstOrFail();
+                    $lokasiAsalId = $barang->lokasi_id; // Ini adalah lokasi gudang
+
                     $barang->update(['lokasi_id' => $lokasiTujuan->id, 'status' => $status]);
 
                     BarangKeluarDetail::create([
@@ -359,18 +383,19 @@ class BarangKeluarController extends Controller
                         'status_keluar' => $status,
                     ]);
 
+                    // Terapkan pergerakan stok
                     if ($status === 'dijual') {
-                        StockHelpers::catatPenjualan($barang->model_id, $lokasiGudang->id, 1);
+                        StockHelpers::catatPenjualan($barang->model_id, $lokasiAsalId, 1);
                     } elseif ($status === 'dipinjamkan') {
-                        StockHelpers::pindahkanStok($barang->model_id, $lokasiGudang->id, $lokasiTujuan->id, 1);
+                        StockHelpers::pindahkanStok($barang->model_id, $lokasiAsalId, $lokasiTujuan->id, 1);
                     }
 
                     MutasiBarang::create([
-                         'barang_id' => $barang->id,
-                         'lokasi_asal_id' => $lokasiGudang->id,
-                         'lokasi_tujuan_id' => $lokasiTujuan->id,
-                         'tanggal' => $request->tanggal,
-                         'keterangan' => "Barang keluar dengan status: {$status} (diedit)",
+                    'barang_id' => $barang->id,
+                    'lokasi_asal_id' => $lokasiAsalId,
+                    'lokasi_tujuan_id' => $lokasiTujuan->id,
+                    'tanggal' => $request->tanggal,
+                    'keterangan' => "Barang keluar via update (Status: {$status})",
                     ]);
                 }
             }
