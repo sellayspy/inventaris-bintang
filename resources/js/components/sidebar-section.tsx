@@ -73,7 +73,7 @@ export default function SidebarSection({ items, storageKey = 'sidebar-open-menus
                                 </SidebarMenuButton>
                             ) : (
                                 <SidebarMenuButton asChild isActive={isActive} tooltip={{ children: item.title }}>
-                                    <Link href={item.href ?? '#'} prefetch>
+                                    <Link href={item.href ?? '#'}>
                                         {item.icon && <item.icon />}
                                         <span>{item.title}</span>
                                     </Link>
@@ -97,7 +97,7 @@ export default function SidebarSection({ items, storageKey = 'sidebar-open-menus
                                                 isActive={currentUrl.startsWith(child.href ?? '')}
                                                 tooltip={{ children: child.title }}
                                             >
-                                                <Link href={child.href ?? '#'} prefetch>
+                                                <Link href={child.href ?? '#'}>
                                                     {child.icon && <child.icon size={16} />}
                                                     <span>{child.title}</span>
                                                 </Link>

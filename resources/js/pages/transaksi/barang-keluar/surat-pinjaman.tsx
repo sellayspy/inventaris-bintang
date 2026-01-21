@@ -67,33 +67,40 @@ export default function SuratPinjamLegal({ data }: { data: any }) {
                 </div>
 
                 {/* Item Details */}
-                <div className="mt-8 mb-4">
-                    <table className="table-fixed text-[13px] leading-relaxed">
-                        <tbody>
-                            <tr>
-                                <td className="w-[130px] align-top">NAMA</td>
-                                <td className="w-[10px] align-top">:</td>
-                                <td>{data.barang[0]?.label || 'PRINTER THERMAL'}</td>
-                            </tr>
-                            <tr>
-                                <td className="align-top">MERK/TYPE</td>
-                                <td className="align-top">:</td>
-                                <td>{data.barang[0]?.merek_type || 'BLUEPRINT (1 UNIT)'}</td>
-                            </tr>
-                            <tr>
-                                <td className="align-top">SERIAL NUMBER</td>
-                                <td className="align-top">:</td>
-                                <td>{data.barang[0]?.serial_number || '2309080189'}</td>
-                            </tr>
-                            <tr>
-                                <td className="align-top">KELENGKAPAN</td>
-                                <td className="align-top">:</td>
-                                <td>{data.barang[0]?.kelengkapan || 'ADAPTOR, SOFTWARE, DRIVER, TUTORIAL PRINTER'}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <p className="mt-3">Dengan ini kami meminjamkan barang tersebut diatas kepada :</p>
-                </div>
+                {data.barang.map((item, index) => (
+                    <div key={index} className={index > 0 ? 'mt-4' : ''}>
+                        {' '}
+                        {/* Beri jarak jika bukan item pertama */}
+                        <table className="table-fixed text-[13px] leading-relaxed">
+                            <tbody>
+                                <tr>
+                                    <td className="w-[130px] align-top">NAMA</td>
+                                    <td className="w-[10px] align-top">:</td>
+                                    {/* Tampilkan NAMA item */}
+                                    <td>{item.nama || 'PRINTER THERMAL'}</td>
+                                </tr>
+                                <tr>
+                                    <td className="align-top">MERK/TYPE</td>
+                                    <td className="align-top">:</td>
+                                    {/* Tampilkan MERK/TYPE item */}
+                                    <td>{item.merek_type || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <td className="align-top">SERIAL NUMBER</td>
+                                    <td className="align-top">:</td>
+                                    {/* Tampilkan SERIAL NUMBER item */}
+                                    <td className="break-words">{item.serial_number || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <td className="align-top">KELENGKAPAN</td>
+                                    <td className="align-top">:</td>
+                                    {/* Tampilkan KELENGKAPAN item */}
+                                    <td>{item.kelengkapan || 'N/A'}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                ))}
 
                 {/* Borrower Details */}
                 <div className="mb-4">

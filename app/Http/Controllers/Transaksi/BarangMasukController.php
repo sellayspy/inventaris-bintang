@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Transaksi;
 
+use App\Helpers\MasterDataHelper;
 use App\Helpers\StockHelpers;
 use App\Http\Controllers\Controller;
 use App\Models\AsalBarang;
@@ -122,12 +123,12 @@ class BarangMasukController extends Controller
                 'per_page',
                 'page'
             ),
-            'kategoriOptions' => KategoriBarang::select('id', 'nama')->get(),
-            'asalOptions' => AsalBarang::select('id', 'nama')->get(),
-            'merekOptions' => MerekBarang::select('id', 'nama')->get(),
-            'modelOptions' => ModelBarang::select('id', 'nama')->get(),
-            'jenisOptions' => JenisBarang::select('id', 'nama')->get(),
-            'rakOptions' => RakBarang::select('id', 'nama_rak', 'kode_rak')->get(),
+            'kategoriOptions' => MasterDataHelper::getKategoriList(),
+            'asalOptions' => MasterDataHelper::getAsalList(),
+            'merekOptions' => MasterDataHelper::getMerekList(),
+            'modelOptions' => MasterDataHelper::getModelList(),
+            'jenisOptions' => MasterDataHelper::getJenisList(),
+            'rakOptions' => MasterDataHelper::getRakList(),
         ]);
     }
 
@@ -176,12 +177,12 @@ class BarangMasukController extends Controller
     public function create()
     {
         return Inertia::render('transaksi/barang-masuk/barang-masuk-create', [
-            'kategoriList' => KategoriBarang::all(),
-            'asalList' => AsalBarang::all(),
-            'merekList' => MerekBarang::all(),
-            'modelList' => ModelBarang::all(),
-            'jenisList' => JenisBarang::all(),
-            'rakList' => RakBarang::all(),
+            'kategoriList' => MasterDataHelper::getKategoriList(),
+            'asalList' => MasterDataHelper::getAsalList(),
+            'merekList' => MasterDataHelper::getMerekList(),
+            'modelList' => MasterDataHelper::getModelList(),
+            'jenisList' => MasterDataHelper::getJenisList(),
+            'rakList' => MasterDataHelper::getRakList(),
         ]);
     }
 
@@ -215,6 +216,12 @@ class BarangMasukController extends Controller
 
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
 
+            // OPTIMASI: Prepare batch inserts
+            $detailsToInsert = [];
+            $mutasiToInsert = [];
+            $stockUpdates = [];
+            $now = now();
+
             foreach ($request->items as $item) {
                 $kategori = KategoriBarang::firstOrCreate(['nama' => $item['kategori']]);
                 $merk     = MerekBarang::firstOrCreate(['nama' => $item['merek']]);
@@ -229,39 +236,61 @@ class BarangMasukController extends Controller
                     'nama'        => $item['model'],
                 ]);
 
-            $rak = null;
-            if (!empty($item['rak'])) {
-                $rak = RakBarang::firstOrCreate(['nama' => $item['rak']]);
+                // Track stock updates per model + lokasi
+                $stockKey = "{$model->id}_{$lokasiGudang->id}";
+                if (!isset($stockUpdates[$stockKey])) {
+                    $stockUpdates[$stockKey] = [
+                        'model_id' => $model->id,
+                        'lokasi_id' => $lokasiGudang->id,
+                        'jumlah' => 0,
+                    ];
+                }
+
+                foreach ($item['serial_numbers'] as $serial) {
+                    $barang = Barang::create([
+                        'model_id' => $model->id,
+                        'jenis_barang_id' => $jenis->id,
+                        'rak_id' => $item['rak_id'] ?? null,
+                        'asal_id' => $asal?->id,
+                        'lokasi_id' => $lokasiGudang->id,
+                        'serial_number' => $serial,
+                        'kondisi_awal' => 'baru',
+                        'status' => 'baik',
+                    ]);
+
+                    $detailsToInsert[] = [
+                        'barang_masuk_id' => $barangMasuk->id,
+                        'barang_id' => $barang->id,
+                    ];
+
+                    $mutasiToInsert[] = [
+                        'barang_id' => $barang->id,
+                        'lokasi_asal_id' => null,
+                        'lokasi_tujuan_id' => $lokasiGudang->id,
+                        'tanggal' => $request->tanggal,
+                        'keterangan' => 'Barang masuk dari sumber ' . ($asal?->nama ?? 'manual'),
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+
+                    $stockUpdates[$stockKey]['jumlah']++;
+                }
             }
 
-            foreach ($item['serial_numbers'] as $serial) {
-                $barang = Barang::create([
-                    'model_id' => $model->id,
-                    'jenis_barang_id' => $jenis->id,
-                    'rak_id' => $item['rak_id'] ?? null,
-                    'asal_id' => $asal?->id,
-                    'lokasi_id' => $lokasiGudang->id,
-                    'serial_number' => $serial,
-                    'kondisi_awal' => 'baru',
-                    'status' => 'baik',
-                ]);
+            // Batch insert details
+            if (!empty($detailsToInsert)) {
+                BarangMasukDetail::insert($detailsToInsert);
+            }
 
-                BarangMasukDetail::create([
-                    'barang_masuk_id' => $barangMasuk->id,
-                    'barang_id' => $barang->id,
-                ]);
+            // Batch insert mutasi
+            if (!empty($mutasiToInsert)) {
+                MutasiBarang::insert($mutasiToInsert);
+            }
 
-                MutasiBarang::create([
-                    'barang_id' => $barang->id,
-                    'lokasi_asal_id' => null,
-                    'lokasi_tujuan_id' => $lokasiGudang->id,
-                    'tanggal' => $request->tanggal,
-                    'keterangan' => 'Barang masuk dari sumber ' . ($asal?->nama ?? 'manual'),
-                ]);
-
-                StockHelpers::barangMasuk($model->id, $lokasiGudang->id, 1);
-        }
-                }
+            // Batch stock updates
+            foreach ($stockUpdates as $update) {
+                StockHelpers::barangMasuk($update['model_id'], $update['lokasi_id'], $update['jumlah']);
+            }
         });
         return redirect()->route('barang-masuk.index')->with('success', 'Transaksi barang berhasil dicatat.');
     }

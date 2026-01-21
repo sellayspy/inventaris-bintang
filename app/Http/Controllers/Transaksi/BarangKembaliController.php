@@ -24,6 +24,10 @@ class BarangKembaliController extends Controller
 {
     public function index(Request $request)
     {
+        // Ambil input untuk paginasi dan sorting dengan nilai default
+        $perPage = $request->input('per_page', 10);
+        $sort = $request->input('sort', 'terbaru');
+
         $query = BarangKembali::query()
             ->with([
                 'lokasi',
@@ -32,7 +36,6 @@ class BarangKembaliController extends Controller
                 },
                 'details'
             ])
-
             ->when($request->tanggal, fn ($q) => $q->whereDate('tanggal', $request->tanggal))
             ->when($request->lokasi_id, fn ($q) => $q->where('lokasi_id', $request->lokasi_id))
             ->when($request->kategori_id, function ($q) use ($request) {
@@ -40,7 +43,6 @@ class BarangKembaliController extends Controller
                     $subQuery->where('kategori_id', $request->kategori_id);
                 });
             })
-
             ->when($request->search, function ($q) use ($request) {
                 $search = '%' . strtolower($request->search) . '%';
                 $q->where(function ($query) use ($search) {
@@ -57,16 +59,29 @@ class BarangKembaliController extends Controller
                         $subQuery->whereRaw('LOWER(nama) ILIKE ?', [$search]);
                     });
                 });
-            })
-            ->orderByDesc('tanggal')
-            ->latest()
-            ->paginate(10)
-            ->withQueryString();
+            });
 
+        // ## 1. FILTER PENGURUTAN (TERBARU / TERLAMA) ##
+        // Terapkan pengurutan berdasarkan input 'sort'.
+        if ($sort === 'terlama') {
+            $query->orderBy('tanggal', 'asc'); // Urutkan dari yang paling lama
+        } else {
+            $query->orderBy('tanggal', 'desc'); // Default: urutkan dari yang paling baru
+        }
+
+        // ## 2. FILTER JUMLAH DATA PER HALAMAN ##
+        // Terapkan paginasi berdasarkan input 'per_page'.
+        if ($perPage === 'all') {
+            $total = $query->clone()->count();
+            $barangKembali = $query->paginate($total > 0 ? $total : 10)->withQueryString();
+        } else {
+            $barangKembali = $query->paginate(is_numeric($perPage) ? $perPage : 10)->withQueryString();
+        }
 
         return Inertia::render('transaksi/barang-kembali/BarangKembaliIndex', [
-            'barangKembali' => $query,
-            'filters' => $request->only(['tanggal', 'kategori_id', 'lokasi_id', 'search']),
+            'barangKembali' => $barangKembali,
+            // ## 3. KIRIM SEMUA FILTER KE FRONTEND ##
+            'filters' => $request->only(['tanggal', 'kategori_id', 'lokasi_id', 'search', 'sort', 'per_page']),
             'kategoriOptions' => KategoriBarang::select('id', 'nama')->get(),
             'lokasiOptions' => Lokasi::select('id', 'nama')->get(),
         ]);
@@ -203,6 +218,23 @@ class BarangKembaliController extends Controller
                 'user_id' => auth()->id(),
             ]);
 
+            // OPTIMASI: Pre-fetch semua barang sekaligus
+            $allSerialNumbers = collect($request->items)
+                ->pluck('kembali_info')
+                ->flatten(1)
+                ->pluck('serial_number')
+                ->toArray();
+
+            $barangMap = Barang::whereIn('serial_number', $allSerialNumbers)
+                ->get()
+                ->keyBy('serial_number');
+
+            // Prepare batch inserts
+            $detailsToInsert = [];
+            $mutasiToInsert = [];
+            $stockUpdates = [];
+            $now = now();
+
             // Loop untuk setiap jenis model barang
             foreach ($request->items as $item) {
                 // Loop untuk setiap serial number di dalamnya
@@ -210,7 +242,9 @@ class BarangKembaliController extends Controller
                     $serial = $info['serial_number'];
                     $kondisi = $info['kondisi'];
 
-                    $barang = Barang::where('serial_number', $serial)->firstOrFail();
+                    // Gunakan pre-fetched barang
+                    $barang = $barangMap[$serial] ?? null;
+                    if (!$barang) continue;
 
                     // Pastikan barang memang sedang berada di lokasi tersebut
                     if ($barang->lokasi_id !== $lokasiDistribusi->id) {
@@ -226,26 +260,53 @@ class BarangKembaliController extends Controller
                         'lokasi_id' => $lokasiGudang->id,
                     ]);
 
-                    // Buat detail transaksi
-                    BarangKembaliDetail::create([
+                    // Collect detail transaksi
+                    $detailsToInsert[] = [
                         'barang_kembali_id' => $barangKembali->id,
                         'barang_id' => $barang->id,
                         'status_saat_kembali' => $kondisi,
-                    ]);
+                    ];
 
-                    // Perbarui stok: tambah di gudang, kurangi di distribusi
-                    StockHelpers::kembalikanStok($barang->model_id, $lokasiGudang->id, $kondisi);
-                    StockHelpers::kurangiStokDistribusi($barang->model_id, $lokasiDistribusi->id, 1);
+                    // Track stock updates
+                    $stockKey = "{$barang->model_id}_{$kondisi}";
+                    if (!isset($stockUpdates[$stockKey])) {
+                        $stockUpdates[$stockKey] = [
+                            'model_id' => $barang->model_id,
+                            'lokasi_gudang_id' => $lokasiGudang->id,
+                            'lokasi_distribusi_id' => $lokasiDistribusi->id,
+                            'kondisi' => $kondisi,
+                            'jumlah' => 0,
+                        ];
+                    }
+                    $stockUpdates[$stockKey]['jumlah']++;
 
-                    // Catat mutasi barang
-                    MutasiBarang::create([
+                    // Collect mutasi barang
+                    $mutasiToInsert[] = [
                         'barang_id' => $barang->id,
                         'lokasi_asal_id' => $lokasiDistribusi->id,
                         'lokasi_tujuan_id' => $lokasiGudang->id,
                         'tanggal' => $request->tanggal,
                         'keterangan' => "Barang kembali dari {$lokasiDistribusi->nama} (Kondisi: {$kondisi})",
-                    ]);
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
                 }
+            }
+
+            // Batch insert details
+            if (!empty($detailsToInsert)) {
+                BarangKembaliDetail::insert($detailsToInsert);
+            }
+
+            // Batch insert mutasi
+            if (!empty($mutasiToInsert)) {
+                MutasiBarang::insert($mutasiToInsert);
+            }
+
+            // Process stock updates
+            foreach ($stockUpdates as $update) {
+                StockHelpers::kembalikanStok($update['model_id'], $update['lokasi_gudang_id'], $update['kondisi']);
+                StockHelpers::kurangiStokDistribusi($update['model_id'], $update['lokasi_distribusi_id'], $update['jumlah']);
             }
         });
 

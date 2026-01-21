@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\MasterData;
 
 use App\Enums\PermissionEnum;
+use App\Helpers\MasterDataHelper;
 use App\Http\Controllers\Controller;
 use App\Models\JenisBarang;
 use App\Models\KategoriBarang;
 use App\Models\MerekBarang;
 use App\Models\ModelBarang;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
 
@@ -24,29 +26,28 @@ class ModelBarangController extends Controller
 
     public function index(Request $request)
     {
-        $model = ModelBarang::with(['kategori', 'merek', 'jenis'])
+        $model = ModelBarang::with(['kategori:id,nama', 'merek:id,nama', 'jenis:id,nama'])
             ->applyCaseInsensitiveSearch($request, ['nama', 'label', 'kategori.nama'])
             ->latest()
             ->paginate(10)
             ->withQueryString();
-        $kategori = KategoriBarang::all();
-        $merek = MerekBarang::all();
-        $jenis = JenisBarang::all();
 
-        // Ambil 20 label paling sering dipakai
-        $labelList = ModelBarang::selectRaw('label, COUNT(*) as total')
-            ->whereNotNull('label')
-            ->groupBy('label')
-            ->orderByDesc('total')
-            ->limit(20)
-            ->pluck('label')
-            ->toArray();
+        // Cache label list karena jarang berubah
+        $labelList = Cache::remember('model_label_list', 300, function () {
+            return ModelBarang::selectRaw('label, COUNT(*) as total')
+                ->whereNotNull('label')
+                ->groupBy('label')
+                ->orderByDesc('total')
+                ->limit(20)
+                ->pluck('label')
+                ->toArray();
+        });
 
         return Inertia::render('master/model/index', [
             'modelBarang' => $model,
-            'kategori' => $kategori,
-            'merek' => $merek,
-            'jenis' => $jenis,
+            'kategori' => MasterDataHelper::getKategoriList(),
+            'merek' => MasterDataHelper::getMerekList(),
+            'jenis' => MasterDataHelper::getJenisList(),
             'labelList' => $labelList,
             'filters' => [
                 'search' => $request->input('search'),

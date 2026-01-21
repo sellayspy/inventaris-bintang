@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MasterData;
 
 use App\Enums\PermissionEnum;
+use App\Helpers\MasterDataHelper;
 use App\Http\Controllers\Controller;
 use App\Models\JenisBarang;
 use App\Models\KategoriBarang;
@@ -23,16 +24,15 @@ class JenisBarangController extends Controller
 
     public function index(Request $request)
     {
-        $jenis = JenisBarang::with('kategori')
+        $jenis = JenisBarang::with('kategori:id,nama')
             ->applyCaseInsensitiveSearch($request, ['nama', 'kategori.nama'])
             ->latest()
             ->paginate(10)
             ->withQueryString();
-        $kategori = KategoriBarang::select('id', 'nama')->get();
 
         return Inertia::render('master/jenis-barang/index', [
             'jenisBarang' => $jenis,
-            'kategoriBarang' => $kategori,
+            'kategoriBarang' => MasterDataHelper::getKategoriList(),
             'filters' => [
                 'search' => $request->input('search'),
             ],
@@ -76,5 +76,25 @@ class JenisBarangController extends Controller
         $jenisBarang->delete();
 
         return Redirect::back()->with('message', 'Jenis Barang berhasil dihapus.');
+    }
+
+    /**
+     * API endpoint untuk mendapatkan jenis barang berdasarkan kategori.
+     * Digunakan untuk cascade filter di form.
+     */
+    public function getByKategori(Request $request)
+    {
+        $kategoriId = $request->input('kategori_id');
+        
+        if (!$kategoriId) {
+            return response()->json([]);
+        }
+
+        $jenis = JenisBarang::where('kategori_id', $kategoriId)
+            ->select('id', 'nama')
+            ->orderBy('nama')
+            ->get();
+
+        return response()->json($jenis);
     }
 }

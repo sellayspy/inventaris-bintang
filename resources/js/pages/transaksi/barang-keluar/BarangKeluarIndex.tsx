@@ -1,9 +1,10 @@
 import { PERMISSIONS } from '@/constants/permission';
 import AppLayout from '@/layouts/app-layout';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { EyeIcon, PencilIcon } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowBigLeft, PlusCircleIcon, TrainFrontTunnelIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import BarangKeluarDetailModal from './BarangKeluarDetail';
+import AksiDropdown from './aksi-dropdown';
 
 interface KategoriOption {
     id: number;
@@ -53,6 +54,8 @@ interface PageProps {
         tanggal?: string;
         kategori_id?: string;
         lokasi_id?: string;
+        sort?: 'terbaru' | 'terlama';
+        per_page?: number | string;
     };
     barangKeluar: {
         data: BarangKeluarTransaksi[];
@@ -70,6 +73,7 @@ export default function BarangKeluarIndex() {
     const { auth, filters, barangKeluar, kategoriOptions, lokasiOptions } = usePage<PageProps>().props;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
+    const [showFilters, setShowFilters] = useState(false);
 
     // Fungsi untuk membuka modal
     const handleOpenModal = (transaksi) => {
@@ -84,20 +88,66 @@ export default function BarangKeluarIndex() {
     };
 
     const userPermissions = auth.permissions || [];
+    const isInitialMount = useRef(true);
 
     const { data, setData } = useForm({
         tanggal: filters?.tanggal || '',
         kategori_id: filters?.kategori_id || '',
         lokasi_id: filters?.lokasi_id || '',
         search: filters?.search || '',
+        sort: filters?.sort || 'terbaru',
+        per_page: filters?.per_page || 10,
     });
 
     function handleFilter() {
         router.get(route('barang-keluar.index'), data, {
             preserveState: true,
             preserveScroll: true,
+            replace: true,
         });
     }
+
+    function handleResetFilters() {
+        router.get(
+            route('barang-keluar.index'),
+            {},
+            {
+                preserveScroll: true,
+                replace: true,
+            },
+        );
+    }
+
+    // ## 2. BUAT PENGECEKAN APAKAH ADA FILTER YANG AKTIF ##
+    const isFilterActive = useMemo(() => {
+        return (
+            data.search !== '' ||
+            data.tanggal !== '' ||
+            data.kategori_id !== '' ||
+            data.lokasi_id !== '' ||
+            data.sort !== 'terbaru' ||
+            String(data.per_page) !== '10'
+        );
+    }, [data]);
+
+    useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+
+        const timeout = setTimeout(() => {
+            handleFilter();
+        }, 500);
+
+        return () => clearTimeout(timeout);
+    }, [data.search]);
+
+    useEffect(() => {
+        if (!isInitialMount.current) {
+            handleFilter();
+        }
+    }, [data.tanggal, data.kategori_id, data.lokasi_id, data.sort, data.per_page]);
 
     const canCreateBarangKeluar = userPermissions.includes(PERMISSIONS.CREATE_BARANG_KELUAR);
     const canEditBarangKeluar = userPermissions.includes(PERMISSIONS.EDIT_BARANG_KELUAR);
@@ -117,7 +167,7 @@ export default function BarangKeluarIndex() {
                             href="/barang-keluar/create"
                             className="flex items-center gap-1 rounded bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-700"
                         >
-                            <PlusIcon className="h-3 w-3" />
+                            <PlusCircleIcon className="h-3 w-3" />
                             <span>Tambah Barang Keluar</span>
                         </Link>
                     )}
@@ -125,56 +175,93 @@ export default function BarangKeluarIndex() {
 
                 {/* Streamlined Filter Card */}
                 <div className="mb-4 rounded border bg-white p-3">
-                    <form
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            handleFilter();
-                        }}
-                        className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4"
-                    >
-                        <div>
+                    {/* Bagian yang selalu tampil */}
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex-grow">
                             <label className="mb-1 block text-xs text-gray-600">Pencarian</label>
                             <input
                                 type="text"
                                 value={data.search || ''}
                                 onChange={(e) => setData('search', e.target.value)}
                                 className="w-full rounded border p-1.5 text-xs"
-                                placeholder="Cari serial/merek/model"
+                                placeholder="Cari serial/merek/model..."
                             />
                         </div>
-
-                        <div>
-                            <label className="mb-1 block text-xs text-gray-600">Tanggal</label>
-                            <input
-                                type="date"
-                                value={data.tanggal}
-                                onChange={(e) => setData('tanggal', e.target.value)}
-                                className="w-full rounded border p-1.5 text-xs"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="mb-1 block text-xs text-gray-600">Kategori</label>
-                            <select
-                                value={data.kategori_id}
-                                onChange={(e) => setData('kategori_id', e.target.value)}
-                                className="w-full rounded border p-1.5 text-xs"
+                        <div className="flex h-max items-center gap-2 self-end">
+                            {/* ## 3. TAMBAHKAN TOMBOL RESET DI UI ## */}
+                            {isFilterActive && (
+                                <button
+                                    onClick={handleResetFilters}
+                                    className="flex items-center gap-2 rounded border p-1.5 text-xs text-red-600 hover:bg-gray-50"
+                                >
+                                    <ArrowBigLeft className="h-3 w-3" />
+                                    <span>Reset</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setShowFilters(!showFilters)}
+                                className="flex items-center gap-2 rounded border p-1.5 text-xs hover:bg-gray-50"
                             >
-                                <option value="">Semua Kategori</option>
-                                {kategoriOptions.map((k) => (
-                                    <option key={k.id} value={k.id}>
-                                        {k.nama}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="flex items-end">
-                            <button type="submit" className="w-full rounded bg-blue-600 p-1.5 text-xs text-white hover:bg-blue-700">
-                                Terapkan Filter
+                                <TrainFrontTunnelIcon className="h-3 w-3" />
+                                <span>Filter</span>
                             </button>
                         </div>
-                    </form>
+                    </div>
+
+                    {/* Bagian yang bisa disembunyikan */}
+                    {showFilters && (
+                        <div className="mt-4 grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-2 md:grid-cols-4">
+                            <div>
+                                <label className="mb-1 block text-xs text-gray-600">Tanggal</label>
+                                <input
+                                    type="date"
+                                    value={data.tanggal}
+                                    onChange={(e) => setData('tanggal', e.target.value)}
+                                    className="w-full rounded border p-1.5 text-xs"
+                                />
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs text-gray-600">Kategori</label>
+                                <select
+                                    value={data.kategori_id}
+                                    onChange={(e) => setData('kategori_id', e.target.value)}
+                                    className="w-full rounded border p-1.5 text-xs"
+                                >
+                                    <option value="">Semua Kategori</option>
+                                    {kategoriOptions.map((k) => (
+                                        <option key={k.id} value={k.id}>
+                                            {k.nama}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs text-gray-600">Urutkan</label>
+                                <select
+                                    value={data.sort}
+                                    onChange={(e) => setData('sort', e.target.value)}
+                                    className="w-full rounded border p-1.5 text-xs"
+                                >
+                                    <option value="terbaru">Terbaru</option>
+                                    <option value="terlama">Terlama</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs text-gray-600">Item per Halaman</label>
+                                <select
+                                    value={data.per_page}
+                                    onChange={(e) => setData('per_page', e.target.value)}
+                                    className="w-full rounded border p-1.5 text-xs"
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                    <option value="all">Semua</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Optimized Table */}
@@ -233,33 +320,14 @@ export default function BarangKeluarIndex() {
 
                                                 <td className="p-2">{transaksi.lokasi?.nama || '-'}</td>
                                                 <td className="p-2 text-right">
-                                                    <div className="flex justify-end gap-3">
-                                                        <a
-                                                            href={route('barang-keluar.cetak-label', transaksi.id)}
-                                                            target="_blank"
-                                                            className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 hover:bg-blue-200"
-                                                        >
-                                                            {' '}
-                                                            <PrinterIcon className="inline h-2.5 w-2.5" /> Print{' '}
-                                                        </a>
-                                                        <button
-                                                            onClick={() => handleOpenModal(transaksi)}
-                                                            className="text-indigo-600 hover:text-indigo-900"
-                                                        >
-                                                            <EyeIcon className="inline h-2.5 w-2.5" />
-                                                            Detail
-                                                        </button>
-
-                                                        {canEditBarangKeluar && (
-                                                            <a
-                                                                href={route('barang-keluar.edit', transaksi.id)}
-                                                                className="rounded bg-yellow-100 px-1.5 py-0.5 text-yellow-700 hover:bg-yellow-200"
-                                                            >
-                                                                <PencilIcon className="inline h-2.5 w-2.5" />
-                                                                Edit
-                                                            </a>
-                                                        )}
-                                                    </div>
+                                                    <AksiDropdown
+                                                        transaksi={transaksi}
+                                                        handleOpenModal={handleOpenModal}
+                                                        can={{
+                                                            edit: canEditBarangKeluar,
+                                                            delete: canDeleteBarangKeluar, // asumsikan ada permission ini
+                                                        }}
+                                                    />
                                                 </td>
                                             </tr>
                                         );

@@ -66,6 +66,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('lokasi', LokasiBarangController::class);
 
     Route::get('/jenis-barang/search', [JenisBarangController::class, 'search'])->name('jenis-barang.search');
+    Route::get('/api/jenis-by-kategori', [JenisBarangController::class, 'getByKategori'])->name('api.jenis-by-kategori');
     Route::resource('jenis-barang', JenisBarangController::class);
 
     Route::get('/asal-barang/search', [AsalBarangController::class, 'search'])->name('asal-barang.search');
@@ -73,6 +74,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/rak-barang/search', [RakBarangController::class, 'search'])->name('rak-barang.search');
     Route::resource('rak-barang', RakBarangController::class);
+
+    // Sub-Lokasi routes
+    Route::get('/api/sub-lokasi-by-lokasi', [\App\Http\Controllers\MasterData\SubLokasiController::class, 'getByLokasi'])->name('api.sub-lokasi-by-lokasi');
+    Route::resource('sub-lokasi', \App\Http\Controllers\MasterData\SubLokasiController::class)->except(['show', 'create', 'edit']);
+
+    // Monitoring routes
+    Route::get('/monitoring', [\App\Http\Controllers\MonitoringController::class, 'index'])->name('monitoring.index');
 
     Route::get('/barang/search', [DataBarangController::class, 'search'])->name('barang.search');
     Route::resource('barang', DataBarangController::class);

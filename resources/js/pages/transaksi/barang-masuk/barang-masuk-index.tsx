@@ -6,6 +6,15 @@ import { ChevronDownIcon, ChevronUpIcon, EllipsisVerticalIcon, Eye, FolderOpenIc
 import { useCallback, useEffect, useState } from 'react';
 import DetailBarangMasukModal from './barang-masuk-detail';
 
+interface BarangMasukItem {
+    id: number;
+    merek?: string;
+    model?: string;
+    kategori?: string;
+    asal_barang?: string;
+    tanggal?: string;
+}
+
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
     let timeout: ReturnType<typeof setTimeout>;
     return function (...args: any[]) {
@@ -34,7 +43,7 @@ export default function BarangMasukIndex() {
         page: filters?.page || 1,
     });
 
-    const openDetailModal = (item: any) => {
+    const openDetailModal = (item: BarangMasukItem) => {
         fetch(route('barang-masuk.show', item.id), {
             headers: {
                 Accept: 'application/json',
@@ -56,19 +65,19 @@ export default function BarangMasukIndex() {
             });
     };
 
-    const debouncedFilter = useCallback(
-        debounce(() => {
+    const debouncedFilter = useCallback(() => {
+        const debouncedFn = debounce(() => {
             router.get(route('barang-masuk.index'), data, {
                 preserveState: true,
                 preserveScroll: true,
             });
-        }, 400),
-        [data],
-    );
+        }, 400);
+        debouncedFn();
+    }, [data]);
 
     useEffect(() => {
         debouncedFilter();
-    }, [data.tanggal, data.kategori_id, data.asal_barang_id, data.merek, data.search, data.sort_by, data.per_page]);
+    }, [data.tanggal, data.kategori_id, data.asal_barang_id, data.merek, data.search, data.sort_by, data.per_page, debouncedFilter]);
 
     const canCreateBarangMasuk = userPermissions.includes(PERMISSIONS.CREATE_BARANG_MASUK);
     const canEditBarangMasuk = userPermissions.includes(PERMISSIONS.EDIT_BARANG_MASUK);
@@ -129,7 +138,7 @@ export default function BarangMasukIndex() {
                                 value={data.search}
                                 onChange={(e) => setData('search', e.target.value)}
                                 className="block w-full rounded-lg border-0 bg-gray-50 py-2 pr-3 pl-9 text-sm text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:ring-inset"
-                                placeholder="Search by serial, brand, model..."
+                                placeholder="Cari berdasarkan serial, brand, model..."
                             />
                         </div>
                     </div>

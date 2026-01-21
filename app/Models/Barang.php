@@ -13,8 +13,8 @@ class Barang extends Model
     use HasFactory;
     protected $table = 'barang';
     protected $fillable = [
-        'jenis_barang_id', 'asal_id', 'lokasi_id', 'model_id',
-        'serial_number', 'kondisi_awal', 'status'
+        'jenis_barang_id', 'asal_id', 'lokasi_id', 'sub_lokasi_id', 'model_id',
+        'serial_number', 'kondisi_awal', 'status', 'pic', 'catatan', 'rak_id'
     ];
 
     public function jenisBarang()
@@ -33,6 +33,11 @@ class Barang extends Model
         return $this->belongsTo(Lokasi::class, 'lokasi_id');
     }
 
+    public function subLokasi()
+    {
+        return $this->belongsTo(SubLokasi::class, 'sub_lokasi_id');
+    }
+
     public function modelBarang()
     {
         return $this->belongsTo(ModelBarang::class, 'model_id');
@@ -49,3 +54,4 @@ class Barang extends Model
     }
 
 }
+

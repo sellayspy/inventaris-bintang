@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MasterData;
 
 use App\Enums\PermissionEnum;
+use App\Helpers\MasterDataHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Lokasi;
 use App\Models\RakBarang;
@@ -29,7 +30,7 @@ class RakBarangController extends Controller
         ->paginate(10)
         ->withQueryString();
 
-        $lokasiList = Lokasi::where('is_gudang', true)->get();
+        $lokasiList = MasterDataHelper::getLokasiGudang();
         return Inertia::render('master/rak-barang/index', [
             'rakList' => $rakList,
             'lokasiList' => $lokasiList,
@@ -44,7 +45,7 @@ class RakBarangController extends Controller
 
     public function create()
     {
-        $lokasiList = Lokasi::where('is_gudang', true)->get();
+        $lokasiList = MasterDataHelper::getLokasiGudang();
         return Inertia::render('gudang/rak-barang/Create', [
             'lokasiList' => $lokasiList,
         ]);
@@ -67,7 +68,7 @@ class RakBarangController extends Controller
     public function edit($id)
     {
         $rak = RakBarang::findOrFail($id);
-        $lokasiList = Lokasi::where('is_gudang', true)->get();
+        $lokasiList = MasterDataHelper::getLokasiGudang();
 
         return Inertia::render('gudang/rak-barang/Edit', [
             'rak' => $rak,

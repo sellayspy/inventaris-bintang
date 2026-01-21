@@ -1,6 +1,7 @@
 import AppLayout from '@/layouts/app-layout';
 import { Link, useForm, usePage } from '@inertiajs/react';
 import React, { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
 
 interface Item {
     kategori: string;

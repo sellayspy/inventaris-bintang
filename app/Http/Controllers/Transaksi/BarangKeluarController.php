@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Transaksi;
 
+use App\Helpers\MasterDataHelper;
 use App\Helpers\StockHelpers;
 use App\Http\Controllers\Controller;
 use App\Models\Barang;
@@ -26,6 +27,9 @@ class BarangKeluarController extends Controller
 {
     public function index(Request $request)
     {
+        $perPage = $request->input('per_page', 10);
+        $sort = $request->input('sort', 'terbaru');
+
         $query = BarangKeluar::query()
             ->with([
                 'lokasi',
@@ -33,50 +37,50 @@ class BarangKeluarController extends Controller
                     $query->with(['merek', 'kategori']);
                 }
             ])
-
             ->when($request->tanggal, fn($q) => $q->whereDate('tanggal', $request->tanggal))
-
             ->when($request->lokasi_id, fn($q) => $q->where('lokasi_id', $request->lokasi_id))
-
             ->when($request->kategori_id, function ($q) use ($request) {
-
                 $q->whereHas('details.barang.modelBarang', function ($subQuery) use ($request) {
                     $subQuery->where('kategori_id', $request->kategori_id);
                 });
             })
-
             ->when($request->search, function ($q) use ($request) {
                 $search = '%' . strtolower($request->search) . '%';
                 $q->where(function ($query) use ($search) {
-
                     $query->orWhereHas('details.barang', function ($subQuery) use ($search) {
                         $subQuery->whereRaw('LOWER(serial_number) ILIKE ?', [$search]);
                     })
-
                     ->orWhereHas('details.barang.modelBarang', function ($subQuery) use ($search) {
                         $subQuery->whereRaw('LOWER(nama) ILIKE ?', [$search]);
                     })
-
                     ->orWhereHas('details.barang.modelBarang.merek', function ($subQuery) use ($search) {
                         $subQuery->whereRaw('LOWER(nama) ILIKE ?', [$search]);
                     })
-
                     ->orWhereHas('details.barang.modelBarang.kategori', function ($subQuery) use ($search) {
                         $subQuery->whereRaw('LOWER(nama) ILIKE ?', [$search]);
                     });
                 });
-            })
+            });
 
-            ->orderByDesc('tanggal')
-            ->latest()
-            ->paginate(10)
-            ->withQueryString();
+        if ($sort === 'terlama') {
+            $query->orderBy('tanggal', 'asc');
+        } else {
+            $query->orderBy('tanggal', 'desc');
+        }
+
+        if ($perPage === 'all') {
+            $total = $query->clone()->count();
+
+            $barangKeluar = $query->paginate($total > 0 ? $total : 10)->withQueryString();
+        } else {
+            $barangKeluar = $query->paginate(is_numeric($perPage) ? $perPage : 10)->withQueryString();
+        }
 
         return Inertia::render('transaksi/barang-keluar/BarangKeluarIndex', [
-            'barangKeluar' => $query,
-            'filters' => $request->only(['tanggal', 'kategori_id', 'lokasi_id', 'search']),
-            'kategoriOptions' => KategoriBarang::select('id', 'nama')->get(),
-            'lokasiOptions' => Lokasi::select('id', 'nama')->get(),
+            'barangKeluar' => $barangKeluar,
+            'filters' => $request->only(['tanggal', 'kategori_id', 'lokasi_id', 'search', 'sort', 'per_page']),
+            'kategoriOptions' => MasterDataHelper::getKategoriList(),
+            'lokasiOptions' => MasterDataHelper::getLokasiList(),
         ]);
     }
 
@@ -126,10 +130,10 @@ class BarangKeluarController extends Controller
             ->map(fn($group) => $group->pluck('serial_number')->filter()->values());
 
         return Inertia::render('transaksi/barang-keluar/barang-keluar-create', [
-            'kategoriList' => KategoriBarang::all(),
-            'lokasiList' => Lokasi::where('is_gudang', false)->get(),
-            'merekList' => MerekBarang::with(['modelBarang.jenis'])->get(),
-            'modelList' => ModelBarang::with(['merek', 'jenis.kategori'])->get(),
+            'kategoriList' => MasterDataHelper::getKategoriList(),
+            'lokasiList' => MasterDataHelper::getLokasiNonGudang(),
+            'merekList' => MasterDataHelper::getMerekWithModel(),
+            'modelList' => MasterDataHelper::getModelWithRelations(),
             'serialNumberList' => $serialNumberList,
         ]);
     }
@@ -139,6 +143,8 @@ class BarangKeluarController extends Controller
         $request->validate([
             'tanggal' => 'required|date',
             'lokasi' => 'required|string|max:100',
+            'sub_lokasi' => 'nullable|string|max:100',
+            'pic' => 'nullable|string|max:100',
             'items' => 'required|array|min:1',
             // Validasi opsional untuk master data di setiap item
             'items.*.kategori' => 'required|string',
@@ -166,6 +172,15 @@ class BarangKeluarController extends Controller
                 ['is_gudang' => false]
             );
 
+            // Cari atau buat sub-lokasi jika diisi
+            $subLokasiId = null;
+            if ($request->filled('sub_lokasi')) {
+                $subLokasi = \App\Models\SubLokasi::firstOrCreate(
+                    ['nama' => $request->sub_lokasi, 'lokasi_id' => $lokasiTujuan->id]
+                );
+                $subLokasiId = $subLokasi->id;
+            }
+
             // 2. Buat satu header transaksi BarangKeluar
             $barangKeluar = BarangKeluar::create([
                 'tanggal' => $request->tanggal,
@@ -175,6 +190,22 @@ class BarangKeluarController extends Controller
 
             $lokasiGudang = Lokasi::where('is_gudang', true)->firstOrFail();
 
+            // OPTIMASI: Pre-fetch semua barang sekaligus untuk menghindari N+1
+            $allSerialNumbers = collect($request->items)
+                ->pluck('keluar_info')
+                ->flatten(1)
+                ->pluck('serial_number')
+                ->toArray();
+
+            $barangMap = Barang::whereIn('serial_number', $allSerialNumbers)
+                ->get()
+                ->keyBy('serial_number');
+
+            // Prepare batch inserts
+            $detailsToInsert = [];
+            $mutasiToInsert = [];
+            $stockUpdates = [];
+
             // 3. Looping untuk setiap JENIS BARANG (item)
             foreach ($request->items as $item) {
 
@@ -183,37 +214,75 @@ class BarangKeluarController extends Controller
                     $serial = $info['serial_number'];
                     $status = $info['status_keluar'];
 
-                    $barang = Barang::where('serial_number', $serial)->firstOrFail();
+                    // Gunakan pre-fetched barang dari collection
+                    $barang = $barangMap[$serial] ?? null;
+                    if (!$barang) continue;
+
                     $lokasiAsalId = $barang->lokasi_id;
 
-                    // Update lokasi dan status barang
+                    // Update lokasi, sub_lokasi, pic dan status barang
                     $barang->update([
                         'lokasi_id' => $lokasiTujuan->id,
+                        'sub_lokasi_id' => $subLokasiId,
+                        'pic' => $request->pic,
                         'status' => $status,
                     ]);
 
-                    // Buat detail transaksi
-                    BarangKeluarDetail::create([
+                    // Collect detail untuk batch insert
+                    $detailsToInsert[] = [
                         'barang_keluar_id' => $barangKeluar->id,
                         'barang_id' => $barang->id,
                         'status_keluar' => $status,
-                    ]);
+                    ];
 
-                    // Update stok berdasarkan status
-                    if ($status === 'dijual') {
-                        StockHelpers::catatPenjualan($barang->model_id, $lokasiAsalId, 1);
-                    } elseif ($status === 'dipinjamkan') {
-                        StockHelpers::pindahkanStok($barang->model_id, $lokasiAsalId, $lokasiTujuan->id, 1);
+                    // Collect stock updates untuk batch processing
+                    $stockKey = "{$barang->model_id}_{$lokasiAsalId}";
+                    if (!isset($stockUpdates[$stockKey])) {
+                        $stockUpdates[$stockKey] = [
+                            'model_id' => $barang->model_id,
+                            'lokasi_asal_id' => $lokasiAsalId,
+                            'lokasi_tujuan_id' => $lokasiTujuan->id,
+                            'dijual' => 0,
+                            'dipinjamkan' => 0,
+                        ];
                     }
 
-                    // Catat mutasi barang
-                    MutasiBarang::create([
+                    if ($status === 'dijual') {
+                        $stockUpdates[$stockKey]['dijual']++;
+                    } elseif ($status === 'dipinjamkan') {
+                        $stockUpdates[$stockKey]['dipinjamkan']++;
+                    }
+
+                    // Collect mutasi untuk batch insert
+                    $mutasiToInsert[] = [
                         'barang_id' => $barang->id,
                         'lokasi_asal_id' => $lokasiAsalId,
                         'lokasi_tujuan_id' => $lokasiTujuan->id,
                         'tanggal' => $request->tanggal,
                         'keterangan' => "Barang keluar ke {$lokasiTujuan->nama} (Status: {$status})",
-                    ]);
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+            }
+
+            // Batch insert details
+            if (!empty($detailsToInsert)) {
+                BarangKeluarDetail::insert($detailsToInsert);
+            }
+
+            // Batch insert mutasi
+            if (!empty($mutasiToInsert)) {
+                MutasiBarang::insert($mutasiToInsert);
+            }
+
+            // Process stock updates
+            foreach ($stockUpdates as $update) {
+                if ($update['dijual'] > 0) {
+                    StockHelpers::catatPenjualan($update['model_id'], $update['lokasi_asal_id'], $update['dijual']);
+                }
+                if ($update['dipinjamkan'] > 0) {
+                    StockHelpers::pindahkanStok($update['model_id'], $update['lokasi_asal_id'], $update['lokasi_tujuan_id'], $update['dipinjamkan']);
                 }
             }
         });
@@ -517,39 +586,27 @@ class BarangKeluarController extends Controller
             'details.barang.modelBarang.kategori',
         ])->findOrFail($id);
 
-        $details = $barangKeluar->details;
+        // 1. Kelompokkan detail berdasarkan model barangnya
+        $groupedByModel = $barangKeluar->details->groupBy('barang.model_id');
 
-        // Group berdasarkan merek
-        $groupedByMerek = $details->groupBy(function ($detail) {
-            return $detail->barang->modelBarang->merek->nama ?? '-';
-        });
+        // 2. Transformasi setiap grup menjadi satu baris data barang untuk surat
+        $barangList = $groupedByModel->map(function (Collection $group) {
+            $firstDetail = $group->first();
+            $modelBarang = $firstDetail->barang->modelBarang;
+            $merek = $modelBarang->merek->nama ?? 'N/A';
+            $model = $modelBarang->nama ?? 'N/A';
+            $kategori = $modelBarang->kategori->nama ?? 'N/A';
 
-        $barangList = $groupedByMerek->map(function (Collection $group, $merek) {
-            // Group berdasarkan model (nama model)
-            $models = $group->groupBy(function ($item) {
-                return $item->barang->modelBarang->nama;
-            });
-
-            // Gabungkan nama model
-            $modelLabels = $models->map(function ($items) {
-                return strtoupper($items->first()->barang->modelBarang->nama);
-            })->values()->implode(', ');
-
-            // Gabungkan label jika ada lebih dari satu
-            $labelSet = $models->map(function ($items) {
-                return strtoupper($items->first()->barang->modelBarang->label);
-            })->unique()->values()->implode(', ');
-
-            // Gabungkan semua serial number
+            // Gabungkan semua serial number untuk model ini
             $serialNumbers = $group->pluck('barang.serial_number')->implode(', ');
 
             return [
-                'nama' => $labelSet,
-                'merek_type' => strtoupper("{$merek} {$modelLabels} (" . $group->count() . " UNIT)"),
+                'nama' => strtoupper($kategori), // Gunakan Kategori sebagai Nama
+                'merek_type' => strtoupper("{$merek} / {$model} (" . $group->count() . " UNIT)"),
                 'serial_number' => $serialNumbers,
                 'kelengkapan' => 'ADAPTOR, SOFTWARE, DRIVER, TUTORIAL PRINTER',
             ];
-        })->values();
+        })->values()->all();
 
         // Format tanggal surat
         $tanggal = Carbon::parse($barangKeluar->tanggal);

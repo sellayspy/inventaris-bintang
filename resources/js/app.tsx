@@ -15,7 +15,14 @@ createInertiaApp({
 
         root.render(<App {...props} />);
     },
-    progress: false,
+    progress: {
+        // Warna progress bar (biru modern)
+        color: '#3b82f6',
+        // Tampilkan spinner di pojok kanan atas
+        showSpinner: true,
+        // Delay sebelum progress bar muncul (ms) - hindari flash untuk navigasi cepat
+        delay: 100,
+    },
 });
 
 // This will set light / dark mode on load...

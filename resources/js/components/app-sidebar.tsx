@@ -83,6 +83,7 @@ export function AppSidebar() {
                 { title: 'Jenis Barang', href: '/jenis-barang', icon: Shapes, permission: PERMISSIONS.VIEW_JENIS },
                 { title: 'Asal Barang', href: '/asal-barang', icon: Building2, permission: PERMISSIONS.VIEW_ASAL_BARANG },
                 { title: 'Lokasi', href: '/lokasi', icon: MapPin, permission: PERMISSIONS.VIEW_LOKASI_DISTRIBUSI },
+                { title: 'Sub-Lokasi', href: '/sub-lokasi', icon: MapPin, permission: PERMISSIONS.VIEW_LOKASI_DISTRIBUSI },
                 { title: 'Rak Barang', href: '/rak-barang', icon: Archive, permission: PERMISSIONS.VIEW_RAK_BARANG },
             ],
         },
@@ -94,6 +95,15 @@ export function AppSidebar() {
             href: '/transaksi',
             icon: LayoutGrid,
             permission: PERMISSIONS.VIEW_TRANSAKSI,
+        },
+    ];
+
+    const monitoringNavItems = [
+        {
+            title: 'Monitoring',
+            href: '/monitoring',
+            icon: MapPin,
+            permission: PERMISSIONS.VIEW_STOK_DASHBOARD,
         },
     ];
 
@@ -171,6 +181,7 @@ export function AppSidebar() {
     const visiblePlatformNavItems = filterMenuByPermissions(platformNavItems, userPermissions);
     const visibleMasterDataNavItems = filterMenuByPermissions(masterDataNavItems, userPermissions);
     const visibleTransaksiNavItems = filterMenuByPermissions(transaksiNavItems, userPermissions);
+    const visibleMonitoringNavItems = filterMenuByPermissions(monitoringNavItems, userPermissions);
     const visibleStokNavItems = filterMenuByPermissions(stokNavItems, userPermissions);
     const visibleLaporanNavItems = filterMenuByPermissions(laporanNavItems, userPermissions);
     const visibleAksesNavItems = filterMenuByPermissions(aksesNavItems, userPermissions);
@@ -181,7 +192,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href="/dashboard" prefetch>
+                            <Link href="/dashboard">
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>
@@ -210,6 +221,13 @@ export function AppSidebar() {
                     <SidebarGroup className="px-2 py-0">
                         <SidebarGroupLabel>Transaksi</SidebarGroupLabel>
                         <SidebarSection items={visibleTransaksiNavItems} />
+                    </SidebarGroup>
+                )}
+
+                {visibleMonitoringNavItems.length > 0 && (
+                    <SidebarGroup className="px-2 py-0">
+                        <SidebarGroupLabel>Monitoring</SidebarGroupLabel>
+                        <SidebarSection items={visibleMonitoringNavItems} />
                     </SidebarGroup>
                 )}
 

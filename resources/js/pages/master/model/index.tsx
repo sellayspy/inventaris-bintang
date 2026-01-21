@@ -1,15 +1,16 @@
 import { PERMISSIONS } from '@/constants/permission';
 import AppLayout from '@/layouts/app-layout';
 import { Head, router, useForm } from '@inertiajs/react';
+import axios from 'axios';
 import debounce from 'lodash.debounce';
 import { Edit3, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import Select from 'react-select';
 
 type Kategori = { id: number; nama: string };
 type Merek = { id: number; nama: string };
-type JenisBarang = { id: number; nama: string; kategori: Kategori; kategori_id?: number };
+type JenisBarang = { id: number; nama: string; kategori?: Kategori; kategori_id?: number };
 
 type ModelBarang = {
     id: number;
@@ -40,11 +41,12 @@ type Props = {
 };
 
 export default function Index({ auth, modelBarang, kategori, merek, jenis, flash, labelList, filters }: Props & { filters: { search: string } }) {
-    console.log('jenis', jenis);
     const [editing, setEditing] = useState<ModelBarang | null>(null);
     const [showForm, setShowForm] = useState(false);
     const [labelOptions, setLabelOptions] = useState<string[]>([]);
     const [search, setSearch] = useState(filters.search || '');
+    const [filteredJenis, setFilteredJenis] = useState<JenisBarang[]>([]);
+    const [loadingJenis, setLoadingJenis] = useState(false);
     const userPermissions = auth.permissions || [];
 
     const form = useForm({
@@ -53,7 +55,6 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
         kategori_id: '',
         merek_id: '',
         jenis_id: '',
-        debugger: '',
     });
 
     useEffect(() => {
@@ -64,16 +65,44 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
     }, [flash?.message]);
 
     useEffect(() => {
-        // Inisialisasi labelOptions dari props
         if (labelList?.length) {
             setLabelOptions(labelList);
         }
     }, [labelList]);
 
+    // Cascade filter: load Jenis berdasarkan Kategori yang dipilih
+    const fetchJenisByKategori = useCallback(async (kategoriId: string) => {
+        if (!kategoriId) {
+            setFilteredJenis([]);
+            return;
+        }
+
+        setLoadingJenis(true);
+        try {
+            const response = await axios.get('/api/jenis-by-kategori', {
+                params: { kategori_id: kategoriId },
+            });
+            setFilteredJenis(response.data);
+        } catch (error) {
+            console.error('Error fetching jenis:', error);
+            setFilteredJenis([]);
+        } finally {
+            setLoadingJenis(false);
+        }
+    }, []);
+
+    // Watch kategori_id changes untuk cascade filter
+    useEffect(() => {
+        if (form.data.kategori_id) {
+            fetchJenisByKategori(form.data.kategori_id);
+        } else {
+            setFilteredJenis([]);
+        }
+    }, [form.data.kategori_id, fetchJenisByKategori]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Tambahkan label baru ke opsi jika belum ada
         if (form.data.label && !labelOptions.includes(form.data.label)) {
             setLabelOptions((prev) => [...prev, form.data.label]);
         }
@@ -107,8 +136,11 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
             kategori_id: item.kategori.id.toString(),
             merek_id: item.merek.id.toString(),
             jenis_id: item.jenis?.id ? item.jenis.id.toString() : '',
-            debugger: '',
         });
+        // Set filtered jenis untuk edit mode
+        if (item.kategori?.id) {
+            fetchJenisByKategori(item.kategori.id.toString());
+        }
         setEditing(item);
         setShowForm(true);
     };
@@ -123,14 +155,20 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
         form.reset();
         setEditing(null);
         setShowForm(false);
+        setFilteredJenis([]);
     };
 
-    // fungsi pencarian dengan debounce
-    const handleSearch = (value: string) => {
-        setSearch(value);
+    // Handle kategori change - reset jenis_id when kategori changes
+    const handleKategoriChange = (newKategoriId: string) => {
+        form.setData((data) => ({
+            ...data,
+            kategori_id: newKategoriId,
+            jenis_id: '', // Reset jenis when kategori changes
+        }));
+    };
 
-        // Gunakan debounce untuk menunda request Inertia
-        debounce(() => {
+    const debouncedSearch = useCallback(
+        debounce((value: string) => {
             router.get(
                 route('model.index'),
                 { search: value },
@@ -139,7 +177,13 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                     replace: true,
                 },
             );
-        }, 400)();
+        }, 400),
+        [],
+    );
+
+    const handleSearch = (value: string) => {
+        setSearch(value);
+        debouncedSearch(value);
     };
 
     return (
@@ -172,14 +216,13 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
                             <h2 className="mb-5 text-xl font-semibold dark:text-white">{editing ? 'Edit Model' : 'Tambah Model Baru'}</h2>
                             <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                                {/* A consistent wrapper for each form field for easier styling. */}
                                 <div className="space-y-1">
                                     <label className="text-sm font-medium dark:text-gray-200">Nama Model</label>
                                     <input
                                         type="text"
                                         value={form.data.nama}
                                         onChange={(e) => form.setData('nama', e.target.value)}
-                                        className="w-full rounded-md border-gray-300 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                        className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                                         required
                                     />
                                     {form.errors.nama && <p className="text-sm text-red-500">{form.errors.nama}</p>}
@@ -189,8 +232,8 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                                     <label className="text-sm font-medium dark:text-gray-200">Kategori</label>
                                     <select
                                         value={form.data.kategori_id}
-                                        onChange={(e) => form.setData('kategori_id', e.target.value)}
-                                        className="w-full rounded-md border-gray-300 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                        onChange={(e) => handleKategoriChange(e.target.value)}
+                                        className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                                         required
                                     >
                                         <option value="">Pilih Kategori</option>
@@ -208,7 +251,7 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                                     <select
                                         value={form.data.merek_id}
                                         onChange={(e) => form.setData('merek_id', e.target.value)}
-                                        className="w-full rounded-md border-gray-300 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                        className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                                         required
                                     >
                                         <option value="">Pilih Merek</option>
@@ -222,15 +265,25 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                                 </div>
 
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium dark:text-gray-200">Jenis Barang</label>
+                                    <label className="text-sm font-medium dark:text-gray-200">
+                                        Jenis Barang
+                                        {loadingJenis && <span className="ml-2 text-gray-400">(memuat...)</span>}
+                                        {!form.data.kategori_id && <span className="ml-2 text-xs text-gray-400">(pilih kategori dulu)</span>}
+                                    </label>
                                     <select
                                         value={form.data.jenis_id}
                                         onChange={(e) => form.setData('jenis_id', e.target.value)}
-                                        className="w-full rounded-md border-gray-300 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-                                        required
+                                        className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:disabled:bg-zinc-700"
+                                        disabled={!form.data.kategori_id || loadingJenis}
                                     >
-                                        <option value="">Pilih Jenis Barang</option>
-                                        {jenis.map((j) => (
+                                        <option value="">
+                                            {!form.data.kategori_id
+                                                ? '-- Pilih Kategori terlebih dahulu --'
+                                                : filteredJenis.length === 0
+                                                  ? 'Tidak ada jenis untuk kategori ini'
+                                                  : 'Pilih Jenis Barang'}
+                                        </option>
+                                        {filteredJenis.map((j) => (
                                             <option key={j.id} value={j.id}>
                                                 {j.nama}
                                             </option>
@@ -241,17 +294,16 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
 
                                 <div className="space-y-1 md:col-span-2">
                                     <label className="text-sm font-medium dark:text-gray-200">Label Barang</label>
-                                    {/* The Select component is assumed to be custom. Styling remains minimal. */}
                                     <Select
                                         options={labelOptions.map((label) => ({ label, value: label }))}
                                         onChange={(selected) => form.setData('label', selected?.value || '')}
                                         value={form.data.label ? { label: form.data.label, value: form.data.label } : null}
                                         isClearable
+                                        placeholder="Pilih atau ketik label baru..."
                                     />
                                     {form.errors.label && <p className="text-sm text-red-500">{form.errors.label}</p>}
                                 </div>
 
-                                {/* Buttons are grouped at the end */}
                                 <div className="flex gap-3 md:col-span-2">
                                     <button
                                         type="submit"
@@ -273,7 +325,6 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                     )}
 
                     {/* --- DATA TABLE --- */}
-                    {/* Replaced shadow with a simple border for a flatter, faster design. */}
                     <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-zinc-800">
                             <thead className="bg-gray-50 dark:bg-zinc-800">
@@ -286,9 +337,6 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
                                         Kategori
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        Merek
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
                                         Jenis
@@ -305,13 +353,23 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                                 {modelBarang.data.map((item, index) => (
                                     <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{index + 1}</td>
-                                        <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{`${item.merek?.nama ?? ''} ${item.nama}`}</td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                                {item.merek?.nama} {item.nama}
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{item.kategori?.nama}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{item.merek?.nama}</td>
                                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{item.jenis?.nama || '-'}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{item?.label || '-'}</td>
+                                        <td className="px-6 py-4">
+                                            {item.label ? (
+                                                <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                                                    {item.label}
+                                                </span>
+                                            ) : (
+                                                <span className="text-sm text-gray-400">-</span>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-4 text-sm">
-                                            {/* Using flex gap for consistent spacing between action icons */}
                                             <div className="flex items-center gap-4">
                                                 {canEditModel && (
                                                     <button
@@ -338,13 +396,12 @@ export default function Index({ auth, modelBarang, kategori, merek, jenis, flash
                     </div>
 
                     {/* --- PAGINATION --- */}
-                    {/* Pagination is simplified for clarity and ease of use. */}
                     {modelBarang.links && (
                         <div className="flex flex-wrap justify-center gap-2">
                             {modelBarang.links.map((link, i) => (
                                 <button
                                     key={i}
-                                    onClick={() => link.url && form.get(link.url)}
+                                    onClick={() => link.url && router.get(link.url)}
                                     className={`rounded-md px-3 py-1.5 text-sm font-medium ${
                                         link.active
                                             ? 'bg-blue-600 text-white'
