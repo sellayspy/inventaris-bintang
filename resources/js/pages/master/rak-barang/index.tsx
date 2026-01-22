@@ -1,6 +1,6 @@
+import { Column, DataTable } from '@/components/data-table';
 import { PERMISSIONS } from '@/constants/permission';
 import AppLayout from '@/layouts/app-layout';
-import { BreadcrumbItem } from '@/types';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import debounce from 'lodash.debounce';
 import { Edit3, Trash2 } from 'lucide-react';
@@ -46,13 +46,6 @@ type Props = {
         permissions?: string[];
     };
 };
-
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Rak Barang',
-        href: '/rak-barang',
-    },
-];
 
 export default function Index({ auth, rakList, lokasiList = [], filters }: Props & { filters: { search: string } }) {
     const { flash } = usePage<{ flash: FlashProps }>().props;
@@ -119,7 +112,7 @@ export default function Index({ auth, rakList, lokasiList = [], filters }: Props
 
         debounce(() => {
             router.get(
-                route('lokasi.index'),
+                route('rak-barang.index'),
                 { search: value },
                 {
                     preserveState: true,
@@ -133,44 +126,58 @@ export default function Index({ auth, rakList, lokasiList = [], filters }: Props
     const canEditRak = userPermissions.includes(PERMISSIONS.EDIT_RAK_BARANG);
     const canDeleteRak = userPermissions.includes(PERMISSIONS.DELETE_RAK_BARANG);
 
+    const columns: Column<RakBarang>[] = [
+        {
+            header: 'Gudang/Lokasi',
+            accessorKey: 'lokasi',
+            cell: (item) => item.lokasi?.nama,
+        },
+        {
+            header: 'Nama Rak',
+            accessorKey: 'nama_rak',
+        },
+        {
+            header: 'Baris',
+            accessorKey: 'baris',
+            cell: (item) => item.baris || '-',
+        },
+        {
+            header: 'Kode Rak',
+            accessorKey: 'kode_rak',
+        },
+    ];
+
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
-            <div className="bg-gray-50 p-4 sm:p-6 dark:bg-zinc-950">
+        <AppLayout>
+            <div className="min-h-screen bg-gray-50 p-4 sm:p-6 dark:bg-zinc-950">
                 <Head title="Rak Barang" />
 
                 <div className="mx-auto max-w-7xl space-y-6">
                     <div className="flex items-center justify-between">
-                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Data Rak Barang</h1>
-                        {/* Form Pencarian */}
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="text"
-                                placeholder="Cari kategori..."
-                                value={search}
-                                onChange={(e) => handleSearch(e.target.value)}
-                                className="rounded-md border-gray-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-                            />
-
-                            {canCreateRak && (
-                                <button
-                                    onClick={() => (showForm ? handleCancel() : setShowForm(true))}
-                                    className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700"
-                                >
-                                    {showForm ? 'Tutup Form' : ' + Tambah Rak'}
-                                </button>
-                            )}
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Data Rak Barang</h1>
+                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Kelola daftar rak barang dan alokasi tempat.</p>
                         </div>
                     </div>
+
                     {showForm && (
-                        <div className="mb-6 rounded-lg bg-white p-6 shadow dark:bg-zinc-900">
-                            <h2 className="mb-4 text-xl font-semibold dark:text-white">{editing ? 'Edit Rak Barang' : 'Tambah Rak Baru'}</h2>
+                        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                            <div className="mb-5 flex items-center justify-between">
+                                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                                    {editing ? 'Edit Rak Barang' : 'Tambah Rak Baru'}
+                                </h2>
+                                <button onClick={handleCancel} className="text-gray-400 hover:text-gray-600">
+                                    <span className="sr-only">Close</span>
+                                </button>
+                            </div>
+
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
-                                    <label className="mb-1 block text-sm font-medium dark:text-gray-200">Gudang/Lokasi</label>
+                                    <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-gray-200">Gudang/Lokasi</label>
                                     <select
                                         value={form.data.lokasi_id}
                                         onChange={(e) => form.setData('lokasi_id', e.target.value)}
-                                        className="w-full rounded-md border border-gray-300 p-2 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                        className="w-full rounded-md border border-gray-200 p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
                                         required
                                     >
                                         <option value="">-- Pilih Gudang --</option>
@@ -185,53 +192,53 @@ export default function Index({ auth, rakList, lokasiList = [], filters }: Props
 
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div>
-                                        <label className="mb-1 block text-sm font-medium dark:text-gray-200">Nama Rak</label>
+                                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-gray-200">Nama Rak</label>
                                         <input
                                             type="text"
                                             value={form.data.nama_rak}
                                             onChange={(e) => form.setData('nama_rak', e.target.value)}
-                                            className="w-full rounded-md border border-gray-300 p-2 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                            className="w-full rounded-md border border-gray-200 p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
                                             required
                                         />
                                         {form.errors.nama_rak && <p className="mt-1 text-sm text-red-600">{form.errors.nama_rak}</p>}
                                     </div>
 
                                     <div>
-                                        <label className="mb-1 block text-sm font-medium dark:text-gray-200">Kode Rak</label>
+                                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-gray-200">Kode Rak</label>
                                         <input
                                             type="text"
                                             value={form.data.kode_rak}
                                             onChange={(e) => form.setData('kode_rak', e.target.value)}
-                                            className="w-full rounded-md border border-gray-300 p-2 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                            className="w-full rounded-md border border-gray-200 p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
                                             required
                                         />
                                         {form.errors.kode_rak && <p className="mt-1 text-sm text-red-600">{form.errors.kode_rak}</p>}
                                     </div>
 
                                     <div>
-                                        <label className="mb-1 block text-sm font-medium dark:text-gray-200">Baris</label>
+                                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-gray-200">Baris</label>
                                         <input
                                             type="text"
                                             value={form.data.baris}
                                             onChange={(e) => form.setData('baris', e.target.value)}
-                                            className="w-full rounded-md border border-gray-300 p-2 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                            className="w-full rounded-md border border-gray-200 p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
                                         />
                                         {form.errors.baris && <p className="mt-1 text-sm text-red-600">{form.errors.baris}</p>}
                                     </div>
                                 </div>
 
-                                <div className="flex gap-2 pt-2">
+                                <div className="flex items-end gap-3 pt-2">
                                     <button
                                         type="submit"
                                         disabled={form.processing}
-                                        className="rounded-md bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+                                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                                     >
-                                        {editing ? 'Update' : 'Simpan'}
+                                        {editing ? 'Simpan Perubahan' : 'Simpan Rak'}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={handleCancel}
-                                        className="rounded-md bg-gray-500 px-4 py-2 text-white hover:bg-gray-600"
+                                        className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-gray-50 hover:text-slate-900"
                                     >
                                         Batal
                                     </button>
@@ -240,57 +247,47 @@ export default function Index({ auth, rakList, lokasiList = [], filters }: Props
                         </div>
                     )}
 
-                    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-zinc-800">
-                            <thead className="bg-gray-50 dark:bg-zinc-800">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        No
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        Nama Rak
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        Baris
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        Kode Rak
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        Aksi
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
-                                {rakList.data.map((rak, index) => (
-                                    <tr key={rak.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800">
-                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{index + 1}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{rak.nama_rak}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{rak.baris || '-'}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{rak.kode_rak}</td>
-                                        <td className="flex gap-3 px-6 py-4 text-sm whitespace-nowrap">
-                                            {canEditRak && (
-                                                <button
-                                                    onClick={() => handleEdit(rak)}
-                                                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                                                >
-                                                    <Edit3 size={18} />
-                                                </button>
-                                            )}
-                                            {canDeleteRak && (
-                                                <button
-                                                    onClick={() => handleDelete(rak.id)}
-                                                    className="text-red-600 hover:text-red-800 dark:text-red-400"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    <DataTable
+                        data={rakList.data}
+                        columns={columns}
+                        links={rakList.links}
+                        searchPlaceholder="Cari rak barang..."
+                        onSearch={handleSearch}
+                        initialSearch={search}
+                        onCreate={
+                            canCreateRak
+                                ? () => {
+                                      setShowForm(true);
+                                      setEditing(null);
+                                      form.reset();
+                                  }
+                                : undefined
+                        }
+                        createLabel="Tambah Rak"
+                        actionWidth="w-[100px]"
+                        actions={(item) => (
+                            <div className="flex items-center justify-end gap-2">
+                                {canEditRak && (
+                                    <button
+                                        onClick={() => handleEdit(item)}
+                                        className="group hover:bg-opacity-100 rounded-full p-2 text-blue-600 transition-all hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                        title="Edit"
+                                    >
+                                        <Edit3 size={16} />
+                                    </button>
+                                )}
+                                {canDeleteRak && (
+                                    <button
+                                        onClick={() => handleDelete(item.id)}
+                                        className="group hover:bg-opacity-100 rounded-full p-2 text-red-600 transition-all hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                        title="Hapus"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    />
                 </div>
             </div>
         </AppLayout>

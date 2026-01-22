@@ -1,3 +1,4 @@
+import { Column, DataTable } from '@/components/data-table';
 import { PERMISSIONS } from '@/constants/permission';
 import AppLayout from '@/layouts/app-layout';
 import { BreadcrumbItem } from '@/types';
@@ -101,62 +102,63 @@ export default function Index({ kategori, filters }: Props & { filters: { search
     const canEditKategori = userPermissions.includes(PERMISSIONS.EDIT_KATEGORI);
     const canDeleteKategori = userPermissions.includes(PERMISSIONS.DELETE_KATEGORI);
 
+    const columns: Column<Kategori>[] = [
+        {
+            header: 'Nama Kategori',
+            accessorKey: 'nama',
+            className: 'text-left',
+        },
+    ];
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <div className="bg-gray-50 p-4 sm:p-6 dark:bg-zinc-950">
+            <div className="min-h-screen bg-gray-50 p-4 sm:p-6 dark:bg-zinc-950">
                 <Head title="Kategori Barang" />
                 <div className="mx-auto max-w-7xl space-y-6">
                     <div className="flex items-center justify-between">
-                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Kategori Barang</h1>
-
-                        {/* Form Pencarian */}
-                        <div className="flex items-center gap-4">
-                            <input
-                                type="text"
-                                placeholder="Cari kategori..."
-                                value={search}
-                                onChange={(e) => handleSearch(e.target.value)}
-                                className="rounded-md border-gray-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-                            />
-
-                            {canCreateKategori && (
-                                <button
-                                    onClick={() => (showForm ? handleCancel() : setShowForm(true))}
-                                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                                >
-                                    {showForm ? 'Tutup Form' : ' + Tambah Kategori'}
-                                </button>
-                            )}
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Kategori Barang</h1>
+                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Kelola daftar kategori untuk inventaris barang.</p>
                         </div>
                     </div>
 
                     {showForm && (
-                        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                            <h2 className="mb-5 text-xl font-semibold dark:text-white">{editing ? 'Edit Kategori' : 'Tambah Kategori Baru'}</h2>
+                        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                            <div className="mb-5 flex items-center justify-between">
+                                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                                    {editing ? 'Edit Kategori' : 'Tambah Kategori Baru'}
+                                </h2>
+                                <button onClick={handleCancel} className="text-gray-400 hover:text-gray-600">
+                                    <span className="sr-only">Close</span>
+                                    {/* Simple close icon or text if needed, preserving functionality */}
+                                </button>
+                            </div>
+
                             <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                                <div className="space-y-1">
-                                    <label className="mb-1 block text-sm font-medium dark:text-gray-200">Nama Kategori</label>
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-gray-200">Nama Kategori</label>
                                     <input
                                         type="text"
                                         value={form.data.nama}
                                         onChange={(e) => form.setData('nama', e.target.value)}
-                                        className="w-full rounded-md border border-gray-300 p-2 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                        className="w-full rounded-md border border-gray-200 p-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                                        placeholder="Contoh: Elektronik"
                                         required
                                     />
                                     {form.errors.nama && <p className="mt-1 text-sm text-red-600">{form.errors.nama}</p>}
                                 </div>
-                                <div className="flex gap-3 md:col-span-2">
+                                <div className="flex items-end gap-3 md:col-span-2">
                                     <button
                                         type="submit"
                                         disabled={form.processing}
-                                        className="rounded-md bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+                                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                                     >
-                                        {editing ? 'Update' : 'Simpan'}
+                                        {editing ? 'Simpan Perubahan' : 'Simpan Kategori'}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={handleCancel}
-                                        className="rounded-md bg-gray-500 px-4 py-2 text-white hover:bg-gray-600"
+                                        className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-gray-50 hover:text-slate-900"
                                     >
                                         Batal
                                     </button>
@@ -165,68 +167,48 @@ export default function Index({ kategori, filters }: Props & { filters: { search
                         </div>
                     )}
 
-                    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-zinc-800">
-                            <thead className="bg-gray-50 dark:bg-zinc-800">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        No
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        Nama Kategori
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
-                                        Aksi
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
-                                {kategori.data.map((item, index) => (
-                                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800">
-                                        <td className="px-6 py-4 text-sm whitespace-nowrap">{index + 1}</td>
-                                        <td className="px-6 py-4 text-sm">{item.nama}</td>
-                                        <td className="px-6 py-4 text-sm whitespace-nowrap">
-                                            {canEditKategori && (
-                                                <button
-                                                    onClick={() => handleEdit(item)}
-                                                    className="mr-3 text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                                                >
-                                                    <Edit3 size={18} />
-                                                </button>
-                                            )}
+                    <DataTable
+                        data={kategori.data}
+                        columns={columns}
+                        links={kategori.links}
+                        searchPlaceholder="Cari kategori..."
+                        onSearch={handleSearch}
+                        initialSearch={search}
+                        onCreate={
+                            canCreateKategori
+                                ? () => {
+                                      setShowForm(true);
+                                      setEditing(null);
+                                      form.reset();
+                                  }
+                                : undefined
+                        }
+                        createLabel="Tambah Kategori"
+                        actionWidth="w-[100px]"
+                        actions={(item) => (
+                            <div className="flex items-center justify-end gap-2">
+                                {canEditKategori && (
+                                    <button
+                                        onClick={() => handleEdit(item)}
+                                        className="group hover:bg-opacity-100 rounded-full p-2 text-blue-600 transition-all hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                        title="Edit"
+                                    >
+                                        <Edit3 size={16} />
+                                    </button>
+                                )}
 
-                                            {canDeleteKategori && (
-                                                <button
-                                                    onClick={() => handleDelete(item.id)}
-                                                    className="text-red-600 hover:text-red-800 dark:text-red-400"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {kategori.links && (
-                        <div className="flex flex-wrap justify-center gap-2">
-                            {kategori.links.map((link, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => link.url && form.get(link.url)}
-                                    className={`rounded px-3 py-1 text-sm ${
-                                        link.active
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-white text-blue-600 hover:bg-gray-100 dark:bg-zinc-800 dark:text-blue-400'
-                                    }`}
-                                    dangerouslySetInnerHTML={{ __html: link.label }}
-                                    disabled={!link.url}
-                                />
-                            ))}
-                        </div>
-                    )}
+                                {canDeleteKategori && (
+                                    <button
+                                        onClick={() => handleDelete(item.id)}
+                                        className="group hover:bg-opacity-100 rounded-full p-2 text-red-600 transition-all hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                        title="Hapus"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    />
                 </div>
             </div>
         </AppLayout>

@@ -1,4 +1,3 @@
-import { NavUser } from '@/components/nav-user';
 import SidebarSection from '@/components/sidebar-section';
 import {
     Sidebar,
@@ -187,7 +186,7 @@ export function AppSidebar() {
     const visibleAksesNavItems = filterMenuByPermissions(aksesNavItems, userPermissions);
 
     return (
-        <Sidebar collapsible="icon" variant="inset">
+        <Sidebar collapsible="icon" variant="sidebar">
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
@@ -254,9 +253,7 @@ export function AppSidebar() {
                 )}
             </SidebarContent>
 
-            <SidebarFooter>
-                <NavUser />
-            </SidebarFooter>
+            <SidebarFooter>{/* User info moved to Header */}</SidebarFooter>
         </Sidebar>
     );
 }

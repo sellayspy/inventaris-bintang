@@ -1,53 +1,95 @@
+import { Column, DataTable } from '@/components/data-table';
+import { PERMISSIONS } from '@/constants/permission';
 import AppLayout from '@/layouts/app-layout';
-import { Link, router, usePage } from '@inertiajs/react';
-import debounce from 'lodash.debounce'; // Install lodash jika belum
-import { useCallback, useState } from 'react';
+import { Head, router, usePage } from '@inertiajs/react';
+import debounce from 'lodash.debounce';
+import { Edit3, Trash2 } from 'lucide-react'; // Added Eye for view detail if needed
+import { useCallback, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 
-export default function BarangIndex() {
-    const { barangList, filters, filterOptions } = usePage().props as any;
+type Barang = {
+    id: string; // UUID usually
+    serial_number: string;
+    merek_model: string;
+    kategori: string;
+    nama_rak: string;
+    kode_rak: string;
+    status_awal: string;
+};
 
+type PaginationLink = { url: string | null; label: string; active: boolean };
+type Props = {
+    barangList: {
+        data: Barang[];
+        links: PaginationLink[];
+        from: number;
+    };
+    filters: {
+        search?: string;
+        kategori?: string;
+        lokasi?: string;
+        status?: string;
+        kondisi?: string;
+    };
+    filterOptions: {
+        kategoriList: string[];
+        lokasiList: string[];
+        statusList: string[];
+    };
+    flash?: { message?: string };
+    auth: { permissions?: string[] };
+};
+
+export default function BarangIndex({ barangList, filters, filterOptions, auth }: Props) {
+    const { flash } = usePage<{ flash: { message?: string } }>().props;
     const [search, setSearch] = useState(filters.search || '');
     const [kategori, setKategori] = useState(filters.kategori || '');
     const [lokasi, setLokasi] = useState(filters.lokasi || '');
     const [status, setStatus] = useState(filters.status || '');
-    const [kondisi, setKondisi] = useState(filters.kondisi || '');
 
-    const debouncedSearch = useCallback(
-        debounce((nextValue) => {
-            const query = {
-                search: nextValue,
-                kategori,
-                lokasi,
-                status,
-                kondisi,
-            };
+    // permissions
+    const userPermissions = auth.permissions || [];
+    const canDelete = userPermissions.includes(PERMISSIONS.DELETE_BARANG_INVENTARIS);
+    const canEdit = userPermissions.includes(PERMISSIONS.EDIT_BARANG_INVENTARIS); // Assuming exist
+    const canCreate = userPermissions.includes(PERMISSIONS.CREATE_BARANG_INVENTARIS); // Assuming exist
+
+    useEffect(() => {
+        if (flash?.message) {
+            toast.success(flash.message);
+        }
+    }, [flash?.message]);
+
+    const updateFilter = useCallback(
+        debounce((query: any) => {
             router.get(route('barang.index'), query, {
                 preserveState: true,
                 preserveScroll: true,
+                replace: true,
             });
         }, 400),
-        [kategori, lokasi, status, kondisi],
+        [],
     );
 
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { value } = e.target;
+    const handleSearch = (value: string) => {
         setSearch(value);
-        debouncedSearch(value);
-    };
-
-    const updateFilter = (key: string, value: string) => {
-        const query = {
-            search,
+        updateFilter({
+            search: value,
             kategori,
             lokasi,
             status,
-            kondisi,
-            [key]: value,
-        };
+        });
+    };
 
-        router.get(route('barang.index'), query, {
-            preserveState: true,
-            preserveScroll: true,
+    const handleFilterChange = (key: string, value: string) => {
+        if (key === 'kategori') setKategori(value);
+        if (key === 'lokasi') setLokasi(value);
+        if (key === 'status') setStatus(value);
+
+        updateFilter({
+            search,
+            kategori: key === 'kategori' ? value : kategori,
+            lokasi: key === 'lokasi' ? value : lokasi,
+            status: key === 'status' ? value : status,
         });
     };
 
@@ -56,145 +98,158 @@ export default function BarangIndex() {
         setKategori('');
         setLokasi('');
         setStatus('');
-        setKondisi('');
-
-        router.get(
-            route('barang.index'),
-            {},
-            {
-                preserveState: false,
-                preserveScroll: true,
-            },
-        );
+        router.get(route('barang.index'), {}, { preserveState: false });
     };
 
-    const handleDelete = (id: any) => {
+    const handleDelete = (id: string) => {
         if (confirm('Apakah Anda yakin ingin menghapus barang ini?')) {
             router.delete(route('barang.destroy', id), {
                 preserveScroll: true,
+                onSuccess: () => toast.success('Barang berhasil dihapus'),
             });
         }
     };
 
+    const columns: Column<Barang>[] = [
+        {
+            header: 'Serial Number',
+            accessorKey: 'serial_number',
+        },
+        {
+            header: 'Merek / Model',
+            accessorKey: 'merek_model',
+        },
+        {
+            header: 'Kategori',
+            accessorKey: 'kategori',
+        },
+        {
+            header: 'Lokasi / Rak',
+            accessorKey: 'nama_rak',
+            cell: (item) => (
+                <div className="flex flex-col">
+                    <span className="font-medium">{item.nama_rak}</span>
+                    <span className="text-xs text-slate-500">{item.kode_rak}</span>
+                </div>
+            ),
+        },
+        {
+            header: 'Status',
+            accessorKey: 'status_awal',
+            cell: (item) => (
+                <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        item.status_awal === 'Tersedia'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                            : item.status_awal === 'Rusak'
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                              : 'bg-gray-100 text-gray-800 dark:bg-zinc-800 dark:text-gray-300'
+                    }`}
+                >
+                    {item.status_awal}
+                </span>
+            ),
+        },
+    ];
+
     return (
         <AppLayout>
-            <div className="p-4">
-                <h1 className="mb-4 text-xl font-semibold">Daftar Barang</h1>
+            <div className="min-h-screen bg-gray-50 p-4 sm:p-6 dark:bg-zinc-950">
+                <Head title="Daftar Barang" />
 
-                {/* 🔍 Simplified Filter Controls */}
-                <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
-                    <input
-                        type="text"
-                        placeholder="Cari..."
-                        value={search}
-                        onChange={handleSearchChange}
-                        className="col-span-2 rounded border p-1 text-sm"
-                    />
+                <div className="mx-auto max-w-7xl space-y-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Daftar Barang</h1>
+                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Kelola seluruh inventaris barang.</p>
+                        </div>
+                    </div>
 
-                    <select
-                        value={kategori}
-                        onChange={(e) => {
-                            setKategori(e.target.value);
-                            updateFilter('kategori', e.target.value);
-                        }}
-                        className="rounded border p-1 text-sm"
-                    >
-                        <option value="">Kategori</option>
-                        {filterOptions.kategoriList.map((item) => (
-                            <option key={item} value={item}>
-                                {item}
-                            </option>
-                        ))}
-                    </select>
-
-                    <select
-                        value={lokasi}
-                        onChange={(e) => {
-                            setLokasi(e.target.value);
-                            updateFilter('lokasi', e.target.value);
-                        }}
-                        className="rounded border p-1 text-sm"
-                    >
-                        <option value="">Lokasi</option>
-                        {filterOptions.lokasiList.map((item) => (
-                            <option key={item} value={item}>
-                                {item}
-                            </option>
-                        ))}
-                    </select>
-
-                    <select
-                        value={status}
-                        onChange={(e) => {
-                            setStatus(e.target.value);
-                            updateFilter('status', e.target.value);
-                        }}
-                        className="rounded border p-1 text-sm"
-                    >
-                        <option value="">Status</option>
-                        {filterOptions.statusList.map((item) => (
-                            <option key={item} value={item}>
-                                {item}
-                            </option>
-                        ))}
-                    </select>
-
-                    <button onClick={handleReset} className="rounded bg-gray-200 p-1 text-sm hover:bg-gray-300">
-                        Reset
-                    </button>
-                </div>
-
-                {/* 📋 Simplified Table */}
-                <div className="overflow-x-auto">
-                    <table className="w-full border text-sm">
-                        <thead>
-                            <tr className="bg-gray-100">
-                                <th className="border p-1">No</th>
-                                <th className="border p-1">Serial</th>
-                                <th className="border p-1">Merek/Model</th>
-                                <th className="border p-1">Kategori</th>
-                                <th className="border p-1">Rak</th>
-                                <th className="border p-1">Status</th>
-                                <th className="border p-1">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {barangList.data.map((item, index) => (
-                                <tr key={item.id}>
-                                    <td className="border p-1">{index + 1 + barangList.from - 1}</td>
-                                    <td className="border p-1">{item.serial_number}</td>
-                                    <td className="border p-1">{item.merek_model}</td>
-                                    <td className="border p-1">{item.kategori}</td>
-                                    <td className="border p-1">
-                                        {item.nama_rak} ({item.kode_rak})
-                                    </td>
-                                    <td className="border p-1">{item.status_awal}</td>
-                                    <td className="border p-1">
-                                        <button
-                                            onClick={() => handleDelete(item.id)}
-                                            className="rounded bg-red-500 px-2 py-0.5 text-xs text-white hover:bg-red-600"
-                                        >
-                                            Hapus
-                                        </button>
-                                    </td>
-                                </tr>
+                    {/* Filters Area */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <select
+                            value={kategori}
+                            onChange={(e) => handleFilterChange('kategori', e.target.value)}
+                            className="rounded-md border-gray-200 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                        >
+                            <option value="">Semua Kategori</option>
+                            {filterOptions.kategoriList.map((item) => (
+                                <option key={item} value={item}>
+                                    {item}
+                                </option>
                             ))}
-                        </tbody>
-                    </table>
-                </div>
+                        </select>
 
-                {/* 📑 Compact Pagination */}
-                <div className="mt-3 flex justify-center gap-1">
-                    {barangList.links.map((link, i) => (
-                        <Link
-                            key={i}
-                            href={link.url ?? '#'}
-                            className={`rounded border px-2 py-0.5 text-xs ${
-                                link.active ? 'bg-blue-500 text-white' : 'hover:bg-gray-100'
-                            } ${!link.url ? 'text-gray-400' : ''}`}
-                            dangerouslySetInnerHTML={{ __html: link.label }}
-                        />
-                    ))}
+                        <select
+                            value={lokasi}
+                            onChange={(e) => handleFilterChange('lokasi', e.target.value)}
+                            className="rounded-md border-gray-200 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                        >
+                            <option value="">Semua Lokasi</option>
+                            {filterOptions.lokasiList.map((item) => (
+                                <option key={item} value={item}>
+                                    {item}
+                                </option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={status}
+                            onChange={(e) => handleFilterChange('status', e.target.value)}
+                            className="rounded-md border-gray-200 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                        >
+                            <option value="">Semua Status</option>
+                            {filterOptions.statusList.map((item) => (
+                                <option key={item} value={item}>
+                                    {item}
+                                </option>
+                            ))}
+                        </select>
+
+                        <button
+                            onClick={handleReset}
+                            className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-zinc-700"
+                        >
+                            Reset Filter
+                        </button>
+                    </div>
+
+                    <DataTable
+                        data={barangList.data}
+                        columns={columns}
+                        links={barangList.links}
+                        searchPlaceholder="Cari serial number, merek, model..."
+                        onSearch={handleSearch}
+                        initialSearch={search}
+                        onCreate={canCreate ? () => router.get(route('barang.create')) : undefined} // Assuming create route exists
+                        createLabel="Tambah Barang"
+                        actionWidth="w-[100px]"
+                        actions={(item) => (
+                            <div className="flex items-center justify-end gap-2">
+                                {/* <button className="text-gray-500 hover:text-gray-700 dark:text-gray-400" title="Detail">
+                                    <Eye size={16} />
+                                </button> */}
+                                {canEdit && (
+                                    <button
+                                        onClick={() => router.get(route('barang.edit', item.id))}
+                                        className="group hover:bg-opacity-100 rounded-full p-2 text-blue-600 transition-all hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                        title="Edit"
+                                    >
+                                        <Edit3 size={16} />
+                                    </button>
+                                )}
+                                {canDelete && (
+                                    <button
+                                        onClick={() => handleDelete(item.id)}
+                                        className="group hover:bg-opacity-100 rounded-full p-2 text-red-600 transition-all hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                        title="Hapus"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    />
                 </div>
             </div>
         </AppLayout>

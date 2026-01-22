@@ -1,7 +1,7 @@
 import { AppContent } from '@/components/app-content';
+import { AppHeader } from '@/components/app-header';
 import { AppShell } from '@/components/app-shell';
 import { AppSidebar } from '@/components/app-sidebar';
-import { AppSidebarHeader } from '@/components/app-sidebar-header';
 import { type BreadcrumbItem } from '@/types';
 import { type PropsWithChildren } from 'react';
 import { Toaster } from 'react-hot-toast';
@@ -10,8 +10,8 @@ export default function AppSidebarLayout({ children, breadcrumbs = [] }: PropsWi
     return (
         <AppShell variant="sidebar">
             <AppSidebar />
-            <AppContent variant="sidebar" className="overflow-x-hidden">
-                <AppSidebarHeader breadcrumbs={breadcrumbs} />
+            <AppContent variant="sidebar" className="h-svh overflow-x-hidden overflow-y-auto">
+                <AppHeader breadcrumbs={breadcrumbs} />
                 {children}
             </AppContent>
             <Toaster position="top-right" toastOptions={{ duration: 3000 }} />

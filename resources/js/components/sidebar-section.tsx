@@ -63,7 +63,7 @@ export default function SidebarSection({ items, storageKey = 'sidebar-open-menus
                                     asChild={false}
                                     onClick={() => toggleMenu(item.title)}
                                     tooltip={{ children: item.title }}
-                                    className={`justify-between ${isActive ? 'bg-muted/30 font-medium' : ''}`}
+                                    className={`justify-between`}
                                 >
                                     <div className="flex items-center space-x-2">
                                         {item.icon && <item.icon />}
